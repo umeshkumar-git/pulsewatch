@@ -1,0 +1,21 @@
+{
+	"name": "pulsewatch",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Website and API monitoring platform",
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"scripts": {
+		"dev": "concurrently -n web,api -c blue,green \"npm run dev --workspace=@pulsewatch/web\" \"npm run dev --workspace=@pulsewatch/api\"",
+		"build": "npm run build --workspace=@pulsewatch/shared && npm run build --workspace=@pulsewatch/api && npm run build --workspace=@pulsewatch/web",
+		"dev:web": "npm run dev --workspace=@pulsewatch/web",
+		"dev:api": "npm run dev --workspace=@pulsewatch/api",
+		"typecheck": "npm run typecheck --workspace=@pulsewatch/shared && npm run typecheck --workspace=@pulsewatch/api && npm run typecheck --workspace=@pulsewatch/web"
+	},
+	"devDependencies": {
+		"concurrently": "^9.2.1",
+		"typescript": "^5.9.3"
+	}
+}
