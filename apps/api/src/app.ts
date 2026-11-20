@@ -1,3 +1,4 @@
+import monitorRoutes from "./modules/monitors/monitor.routes";
 import cookieParser from "cookie-parser";
 
 import authRoutes from "./modules/auth/auth.routes";
@@ -25,6 +26,7 @@ app.use(
 app.use(express.json({ limit: "10kb" }));
 app.use(cookieParser());
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/monitors", monitorRoutes);
 
 app.get("/api/v1/health", async (_req, res) => {
 	try {
