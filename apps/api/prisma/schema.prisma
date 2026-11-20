@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -43,33 +42,35 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  monitors     Monitor[]
-  statusPages  StatusPage[]
+  monitors    Monitor[]
+  statusPages StatusPage[]
+
+  refreshSessions RefreshSession[]
 
   @@map("users")
 }
 
 model Monitor {
-  id              String        @id @default(uuid()) @db.Uuid
-  userId          String        @map("user_id") @db.Uuid
-  name            String
-  url             String        @db.Text
-  method          MonitorMethod @default(GET)
-  intervalSeconds Int           @default(60) @map("interval_seconds")
-  timeoutMs       Int           @default(10000) @map("timeout_ms")
-  failureThreshold Int          @default(3) @map("failure_threshold")
-  recoveryThreshold Int         @default(2) @map("recovery_threshold")
-status MonitorStatus @default(UNKNOWN)
-  enabled         Boolean       @default(true)
-  lastCheckedAt   DateTime?     @map("last_checked_at") @db.Timestamptz(3)
-  nextCheckAt     DateTime?     @map("next_check_at") @db.Timestamptz(3)
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                String        @id @default(uuid()) @db.Uuid
+  userId            String        @map("user_id") @db.Uuid
+  name              String
+  url               String        @db.Text
+  method            MonitorMethod @default(GET)
+  intervalSeconds   Int           @default(60) @map("interval_seconds")
+  timeoutMs         Int           @default(10000) @map("timeout_ms")
+  failureThreshold  Int           @default(3) @map("failure_threshold")
+  recoveryThreshold Int           @default(2) @map("recovery_threshold")
+  status            MonitorStatus @default(UNKNOWN)
+  enabled           Boolean       @default(true)
+  lastCheckedAt     DateTime?     @map("last_checked_at") @db.Timestamptz(3)
+  nextCheckAt       DateTime?     @map("next_check_at") @db.Timestamptz(3)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  checkResults    CheckResult[]
-  incidents       Incident[]
-  statusPages     StatusPageMonitor[]
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkResults CheckResult[]
+  incidents    Incident[]
+  statusPages  StatusPageMonitor[]
 
   @@index([userId])
   @@index([enabled, nextCheckAt])
@@ -77,15 +78,15 @@ status MonitorStatus @default(UNKNOWN)
 }
 
 model CheckResult {
-  id            String   @id @default(uuid()) @db.Uuid
-  monitorId     String   @map("monitor_id") @db.Uuid
-  statusCode    Int?     @map("status_code")
-  latencyMs     Int?     @map("latency_ms")
-  success       Boolean
-  errorMessage  String?  @map("error_message") @db.Text
-  checkedAt     DateTime @default(now()) @map("checked_at") @db.Timestamptz(3)
+  id           String   @id @default(uuid()) @db.Uuid
+  monitorId    String   @map("monitor_id") @db.Uuid
+  statusCode   Int?     @map("status_code")
+  latencyMs    Int?     @map("latency_ms")
+  success      Boolean
+  errorMessage String?  @map("error_message") @db.Text
+  checkedAt    DateTime @default(now()) @map("checked_at") @db.Timestamptz(3)
 
-  monitor       Monitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
 
   @@index([monitorId, checkedAt(sort: Desc)])
   @@map("check_results")
@@ -101,7 +102,7 @@ model Incident {
   createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  monitor      Monitor        @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  monitor       Monitor        @relation(fields: [monitorId], references: [id], onDelete: Cascade)
   notifications Notification[]
 
   @@index([monitorId, status])
@@ -116,36 +117,55 @@ model StatusPage {
   isPublic  Boolean  @default(true) @map("is_public")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  monitors  StatusPageMonitor[]
+  user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  monitors StatusPageMonitor[]
 
   @@map("status_pages")
 }
 
 model StatusPageMonitor {
-  statusPageId String     @map("status_page_id") @db.Uuid
-  monitorId    String     @map("monitor_id") @db.Uuid
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  statusPageId String   @map("status_page_id") @db.Uuid
+  monitorId    String   @map("monitor_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  statusPage   StatusPage @relation(fields: [statusPageId], references: [id], onDelete: Cascade)
-  monitor      Monitor    @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  statusPage StatusPage @relation(fields: [statusPageId], references: [id], onDelete: Cascade)
+  monitor    Monitor    @relation(fields: [monitorId], references: [id], onDelete: Cascade)
 
   @@id([statusPageId, monitorId])
   @@map("status_page_monitors")
 }
 
 model Notification {
-  id        String             @id @default(uuid()) @db.Uuid
-  incidentId String            @map("incident_id") @db.Uuid
-  channel   NotificationChannel @default(EMAIL)
-  recipient String
-  status    NotificationStatus @default(PENDING)
-  errorMessage String?         @map("error_message") @db.Text
-  sentAt    DateTime?          @map("sent_at") @db.Timestamptz(3)
-  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  id           String              @id @default(uuid()) @db.Uuid
+  incidentId   String              @map("incident_id") @db.Uuid
+  channel      NotificationChannel @default(EMAIL)
+  recipient    String
+  status       NotificationStatus  @default(PENDING)
+  errorMessage String?             @map("error_message") @db.Text
+  sentAt       DateTime?           @map("sent_at") @db.Timestamptz(3)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  incident  Incident           @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
   @@map("notifications")
+}
+
+model RefreshSession {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  tokenHash String @unique @map("token_hash")
+  familyId  String @map("family_id") @db.Uuid
+
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@map("refresh_sessions")
 }

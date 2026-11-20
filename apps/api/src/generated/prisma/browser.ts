@@ -52,3 +52,8 @@ export type StatusPageMonitor = Prisma.StatusPageMonitorModel
  * 
  */
 export type Notification = Prisma.NotificationModel
+/**
+ * Model RefreshSession
+ * 
+ */
+export type RefreshSession = Prisma.RefreshSessionModel

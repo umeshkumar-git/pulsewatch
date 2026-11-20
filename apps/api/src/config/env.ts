@@ -17,6 +17,12 @@ const envSchema = z.object({
 	DATABASE_URL: z.string().min(1),
 
 	REDIS_URL: z.string().min(1),
+
+	ACCESS_TOKEN_SECRET: z.string().min(32),
+
+	ACCESS_TOKEN_EXPIRES_IN: z.string().default("15m"),
+
+	REFRESH_TOKEN_DAYS: z.coerce.number().int().positive().default(7),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

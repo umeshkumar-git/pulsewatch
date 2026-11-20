@@ -10,6 +10,7 @@
 */
 
 export const MonitorStatus = {
+  UNKNOWN: 'UNKNOWN',
   UP: 'UP',
   DOWN: 'DOWN',
   PAUSED: 'PAUSED'
