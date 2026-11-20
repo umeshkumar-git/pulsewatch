@@ -1,3 +1,4 @@
+import { monitorQueue } from "./queues/monitor.queue";
 import { prisma } from "./config/database";
 import app from "./app";
 import { env } from "./config/env";
@@ -21,9 +22,16 @@ function shutdown(signal: string) {
 			return;
 		}
 
-		await prisma.$disconnect();
+		await monitorQueue.close();
+		console.log("Monitor queue connection closed.");
 
+		await prisma.$disconnect();
 		console.log("Database disconnected.");
+
 		console.log("Server closed successfully.");
 	});
 }
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+	
