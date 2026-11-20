@@ -6,7 +6,6 @@ import { performance } from "node:perf_hooks";
 import ipaddr from "ipaddr.js";
 
 import { prisma } from "../config/database";
-
 import type { MonitorJobData } from "../queues/monitor.queue";
 
 interface HttpCheckResult {
@@ -15,6 +14,7 @@ interface HttpCheckResult {
 	latencyMs: number;
 	errorMessage: string | null;
 }
+
 export async function processMonitorCheck(data: MonitorJobData) {
 	const monitor = await prisma.monitor.findUnique({
 		where: {
@@ -47,93 +47,20 @@ export async function processMonitorCheck(data: MonitorJobData) {
 	);
 
 	// Store the result and update monitor state together.
-	
-await prisma.$transaction(async (tx) => {
-    const stillEnabled = await tx.monitor.findFirst({
-        where: {
-            id: monitor.id,
-            enabled: true,
-        },
-        select: {
-            id: true,
-        },
-    });
+	await prisma.$transaction(async (tx) => {
+		const currentMonitor = await tx.monitor.findFirst({
+			where: {
+				id: monitor.id,
+				enabled: true,
+			},
+		});
 
-    if (!stillEnabled) {
-        return;
-    }
-
-    await tx.checkResult.create({
-        data: {
-            monitorId: monitor.id,
-            statusCode: result.statusCode,
-            latencyMs: result.latencyMs,
-            success: result.success,
-            errorMessage: result.errorMessage,
-            checkedAt,
-        },
-    });
-
-    const requiredChecks = Math.max(
-        monitor.failureThreshold,
-        monitor.recoveryThreshold,
-    );
-
-    const recentResults = await tx.checkResult.findMany({
-        where: {
-            monitorId: monitor.id,
-        },
-        orderBy: {
-            checkedAt: "desc",
-        },
-        take: requiredChecks,
-    });
-
-    // Count consecutive results matching the current result.
-    const firstDifferentResult = recentResults.findIndex(
-        (check) => check.success !== result.success,
-    );
-
-    const consecutiveCount =
-        firstDifferentResult === -1
-            ? recentResults.length
-            : firstDifferentResult;
-
-    let nextStatus = monitor.status;
-
-    if (result.success) {
-        if (monitor.status === "DOWN") {
-            if (consecutiveCount >= monitor.recoveryThreshold) {
-                nextStatus = "UP";
-            }
-        } else {
-            // An UNKNOWN monitor becomes UP after its first success.
-            nextStatus = "UP";
-        }
-    } else {
-        if (consecutiveCount >= monitor.failureThreshold) {
-            nextStatus = "DOWN";
-        }
-    }
-
-    await tx.monitor.update({
-        where: {
-            id: monitor.id,
-        },
-        data: {
-            status: nextStatus,
-            lastCheckedAt: checkedAt,
-            nextCheckAt,
-        },
-    });
-
-
-		// The monitor may have been paused or deleted while
-		// its HTTP request was in progress.
-		if (!stillEnabled) {
+		// Monitor was paused or deleted while the check was running.
+		if (!currentMonitor) {
 			return;
 		}
 
+		// Save the current check result.
 		await tx.checkResult.create({
 			data: {
 				monitorId: monitor.id,
@@ -145,16 +72,112 @@ await prisma.$transaction(async (tx) => {
 			},
 		});
 
+		// Determine how many consecutive checks are required.
+		const requiredChecks = Math.max(
+			currentMonitor.failureThreshold,
+			currentMonitor.recoveryThreshold,
+		);
+
+		const recentResults = await tx.checkResult.findMany({
+			where: {
+				monitorId: monitor.id,
+			},
+			orderBy: {
+				checkedAt: "desc",
+			},
+			take: requiredChecks,
+		});
+
+		// Count consecutive results matching the current result.
+		const firstDifferentResult = recentResults.findIndex(
+			(check) => check.success !== result.success,
+		);
+
+		const consecutiveCount =
+			firstDifferentResult === -1
+				? recentResults.length
+				: firstDifferentResult;
+
+		let nextStatus = currentMonitor.status;
+
+		// Determine whether the monitor should change state.
+		if (result.success) {
+			if (currentMonitor.status === "DOWN") {
+				if (consecutiveCount >= currentMonitor.recoveryThreshold) {
+					nextStatus = "UP";
+				}
+			} else {
+				// An UNKNOWN monitor becomes UP after its first success.
+				nextStatus = "UP";
+			}
+		} else {
+			if (consecutiveCount >= currentMonitor.failureThreshold) {
+				nextStatus = "DOWN";
+			}
+		}
+
+		// Update the monitor status.
 		await tx.monitor.update({
 			where: {
 				id: monitor.id,
 			},
 			data: {
-				status: result.success ? "UP" : "DOWN",
+				status: nextStatus,
 				lastCheckedAt: checkedAt,
 				nextCheckAt,
 			},
 		});
+
+		// Find the existing open incident, if any.
+		const openIncident = await tx.incident.findFirst({
+			where: {
+				monitorId: monitor.id,
+				status: "OPEN",
+			},
+		});
+
+		// Open a new incident when the monitor becomes DOWN.
+		if (nextStatus === "DOWN" && !openIncident) {
+			await tx.incident.create({
+				data: {
+					monitorId: monitor.id,
+					status: "OPEN",
+					failureCount: consecutiveCount,
+					startedAt: checkedAt,
+				},
+			});
+		}
+
+		// Update the existing incident during continued failures.
+		else if (nextStatus === "DOWN" && openIncident && !result.success) {
+			await tx.incident.update({
+				where: {
+					id: openIncident.id,
+				},
+				data: {
+					failureCount: {
+						increment: 1,
+					},
+				},
+			});
+		}
+
+		// Resolve the incident when the recovery threshold is reached.
+		if (
+			nextStatus === "UP" &&
+			currentMonitor.status === "DOWN" &&
+			openIncident
+		) {
+			await tx.incident.update({
+				where: {
+					id: openIncident.id,
+				},
+				data: {
+					status: "RESOLVED",
+					resolvedAt: checkedAt,
+				},
+			});
+		}
 	});
 
 	console.log(
@@ -246,8 +269,6 @@ async function performHttpCheck(
 
 		const pinned = await resolveSafeAddress(hostname);
 
-		const transport = parsedUrl.protocol === "https:" ? https : http;
-
 		const statusCode = await new Promise<number>((resolve, reject) => {
 			let settled = false;
 
@@ -267,6 +288,7 @@ async function performHttpCheck(
 			const options: https.RequestOptions = {
 				hostname: pinned.address,
 				family: pinned.family,
+
 				port: parsedUrl.port
 					? Number(parsedUrl.port)
 					: parsedUrl.protocol === "https:"
@@ -293,7 +315,7 @@ async function performHttpCheck(
 					: {}),
 			};
 
-			const request = transport.request(options, (response) => {
+			const onResponse = (response: http.IncomingMessage) => {
 				const code = response.statusCode ?? 0;
 
 				// Do not follow redirects automatically.
@@ -306,10 +328,14 @@ async function performHttpCheck(
 				response.once("error", (error) => {
 					finish(error);
 				});
-			});
+			};
 
-			// Covers DNS-independent request time, connection,
-			// response headers and response body completion.
+			const request =
+				parsedUrl.protocol === "https:"
+					? https.request(options, onResponse)
+					: http.request(options, onResponse);
+
+			// Covers connection, response headers and body completion.
 			const timeout = setTimeout(() => {
 				request.destroy(new Error("Request timed out"));
 			}, timeoutMs);

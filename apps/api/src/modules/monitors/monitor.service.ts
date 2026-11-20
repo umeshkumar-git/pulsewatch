@@ -246,3 +246,59 @@ export async function resumeMonitor(userId: string, monitorId: string) {
 
 	return monitor;
 }
+export async function getMonitorUptime(
+	userId: string,
+	monitorId: string,
+	hours: number,
+) {
+	const monitor = await prisma.monitor.findFirst({
+		where: {
+			id: monitorId,
+			userId,
+		},
+		select: {
+			id: true,
+			name: true,
+			url: true,
+			status: true,
+		},
+	});
+
+	if (!monitor) {
+		throw new MonitorError("MONITOR_NOT_FOUND", 404);
+	}
+
+	const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+	const [totalChecks, successfulChecks] = await Promise.all([
+		prisma.checkResult.count({
+			where: {
+				monitorId,
+				checkedAt: { gte: since },
+			},
+		}),
+
+		prisma.checkResult.count({
+			where: {
+				monitorId,
+				checkedAt: { gte: since },
+				success: true,
+			},
+		}),
+	]);
+
+	const uptimePercentage =
+		totalChecks === 0
+			? null
+			: Number(((successfulChecks / totalChecks) * 100).toFixed(2));
+
+	return {
+		monitor,
+		periodHours: hours,
+		totalChecks,
+		successfulChecks,
+		failedChecks: totalChecks - successfulChecks,
+		uptimePercentage,
+		calculatedAt: new Date(),
+	};
+}
