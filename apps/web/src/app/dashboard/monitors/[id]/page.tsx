@@ -1,5 +1,7 @@
 "use client";
 
+import CheckHistory from "@/components/check-history";
+import ResponseTimeChart from "@/components/response-time-chart";
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -128,6 +130,24 @@ function MonitorDetailsContent() {
 							<p className="mt-3 text-2xl font-bold">{value}</p>
 						</div>
 					))}
+				</section>
+
+				<section className="mt-8 rounded-xl border border-slate-800 bg-slate-900 p-5">
+					<div className="mb-5">
+						<h2 className="text-lg font-semibold">Response time</h2>
+						<p className="mt-1 text-sm text-slate-400">
+							Recent successful checks, measured in milliseconds.
+						</p>
+					</div>
+
+					<ResponseTimeChart checks={monitor.checkResults} />
+				</section>
+				<section className="mt-8 rounded-xl border border-slate-800 bg-slate-900 p-5">
+					<h2 className="mb-5 text-lg font-semibold">
+						Availability history
+					</h2>
+
+					<CheckHistory checks={monitor.checkResults} />
 				</section>
 
 				<section className="mt-8 rounded-xl border border-slate-800 bg-slate-900">

@@ -57,13 +57,19 @@ export default function DashboardPage() {
 	const [uptime, setUptime] = useState<Record<string, UptimeData>>({});
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
+	const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+	const [refreshVersion, setRefreshVersion] = useState(0);
 
 	useEffect(() => {
 		let active = true;
+		let inFlight = false;
 
 		async function loadDashboard() {
+			if (inFlight) return;
+
+			inFlight = true;
+
 			try {
-				setLoading(true);
 				setError("");
 
 				const [monitorData, incidentData] = await Promise.all([
@@ -105,6 +111,7 @@ export default function DashboardPage() {
 				}
 
 				setUptime(uptimeMap);
+				setLastUpdated(new Date().toLocaleTimeString());
 			} catch (err) {
 				if (!active) return;
 
@@ -116,19 +123,28 @@ export default function DashboardPage() {
 				setError(
 					err instanceof Error
 						? err.message
-						: "Unable to load dashboard.",
+						: "Unable to refresh dashboard.",
 				);
 			} finally {
-				if (active) setLoading(false);
+				inFlight = false;
+
+				if (active) {
+					setLoading(false);
+				}
 			}
 		}
 
-		loadDashboard();
+		void loadDashboard();
+
+		const intervalId = window.setInterval(() => {
+			void loadDashboard();
+		}, 30_000);
 
 		return () => {
 			active = false;
+			window.clearInterval(intervalId);
 		};
-	}, [router]);
+	}, [router, refreshVersion]);
 
 	const upCount = monitors.filter((m) => m.status === "UP").length;
 	const downCount = monitors.filter((m) => m.status === "DOWN").length;
@@ -154,14 +170,24 @@ export default function DashboardPage() {
 						<p className="mt-1 text-sm text-slate-400">
 							Monitor your services and track availability.
 						</p>
+						{lastUpdated && (
+							<p className="mt-2 text-xs text-slate-500">
+								Last updated: {lastUpdated} · Refreshes every 30
+								seconds
+							</p>
+						)}
 					</div>
 
-					<button
-						onClick={() => router.push("/login")}
-						className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
-					>
-						Sign in again
-					</button>
+					<div className="flex items-center gap-3">
+						<button
+							onClick={() =>
+								setRefreshVersion((version) => version + 1)
+							}
+							className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+						>
+							Refresh
+						</button>
+					</div>
 				</header>
 
 				{error && (
