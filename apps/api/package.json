@@ -1,4 +1,3 @@
-
 {
 	"name": "@pulsewatch/api",
 	"version": "1.0.0",
@@ -9,9 +8,9 @@
 		"build": "tsc",
 		"start": "node dist/server.js",
 		"typecheck": "tsc --noEmit",
-  		"worker": "tsx watch src/workers/monitor.worker.ts",
-  		"worker:start": "node dist/workers/monitor.worker.js"
-
+		"worker": "tsx watch src/workers/monitor.worker.ts",
+		"worker:start": "node dist/workers/monitor.worker.js",
+		"email:worker": "tsx watch src/workers/notification.worker.ts"
 	},
 	"dependencies": {
 		"@prisma/adapter-pg": "^7.10.1",
@@ -27,6 +26,7 @@
 		"ioredis": "^6.0.0",
 		"ipaddr.js": "^2.5.0",
 		"jsonwebtoken": "^9.0.3",
+		"nodemailer": "^10.6.1",
 		"pg": "^8.23.1",
 		"zod": "^4.6.7"
 	},
@@ -36,6 +36,7 @@
 		"@types/express": "^5.0.6",
 		"@types/jsonwebtoken": "^9.0.10",
 		"@types/node": "^26.6.6",
+		"@types/nodemailer": "^8.0.2",
 		"@types/pg": "^8.23.1",
 		"prisma": "^7.10.1",
 		"tsx": "^4.23.15"

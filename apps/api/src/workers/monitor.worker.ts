@@ -1,3 +1,4 @@
+import { notificationQueue } from "../queues/notification.queue";
 import { Worker } from "bullmq";
 
 import { redisConnection } from "../config/redis";
@@ -49,6 +50,7 @@ async function shutdown(signal: string) {
 
 	try {
 		await worker.close();
+		await notificationQueue.close();
 		await prisma.$disconnect();
 
 		console.log("[Worker] Shutdown complete");

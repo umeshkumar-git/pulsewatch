@@ -162,6 +162,7 @@ export const NotificationScalarFieldEnum = {
   id: 'id',
   incidentId: 'incidentId',
   channel: 'channel',
+  eventType: 'eventType',
   recipient: 'recipient',
   status: 'status',
   errorMessage: 'errorMessage',

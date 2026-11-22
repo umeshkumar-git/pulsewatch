@@ -23,6 +23,20 @@ const envSchema = z.object({
 	ACCESS_TOKEN_EXPIRES_IN: z.string().default("15m"),
 
 	REFRESH_TOKEN_DAYS: z.coerce.number().int().positive().default(7),
+	SMTP_HOST: z.string().optional(),
+
+	SMTP_PORT: z.coerce.number().int().positive().default(465),
+
+	SMTP_SECURE: z
+		.enum(["true", "false"])
+		.default("true")
+		.transform((value) => value === "true"),
+
+	SMTP_USER: z.string().optional(),
+
+	SMTP_PASS: z.string().optional(),
+
+	NOTIFICATION_FROM: z.string().optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

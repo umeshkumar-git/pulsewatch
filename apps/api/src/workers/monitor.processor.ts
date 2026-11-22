@@ -1,3 +1,4 @@
+import { enqueueNotification } from "../queues/notification.queue";
 import http from "node:http";
 import https from "node:https";
 import { lookup } from "node:dns/promises";
@@ -47,144 +48,204 @@ export async function processMonitorCheck(data: MonitorJobData) {
 	);
 
 	// Store the result and update monitor state together.
-	await prisma.$transaction(async (tx) => {
-		const currentMonitor = await tx.monitor.findFirst({
-			where: {
-				id: monitor.id,
-				enabled: true,
-			},
-		});
+	
+// Store the result, update monitor state, and create notifications together.
+const notificationIds = await prisma.$transaction(
+  async (tx) => {
+    const createdNotificationIds: string[] = [];
 
-		// Monitor was paused or deleted while the check was running.
-		if (!currentMonitor) {
-			return;
-		}
+    const currentMonitor = await tx.monitor.findFirst({
+      where: {
+        id: monitor.id,
+        enabled: true,
+      },
+    });
 
-		// Save the current check result.
-		await tx.checkResult.create({
-			data: {
-				monitorId: monitor.id,
-				statusCode: result.statusCode,
-				latencyMs: result.latencyMs,
-				success: result.success,
-				errorMessage: result.errorMessage,
-				checkedAt,
-			},
-		});
+    // Monitor was paused or deleted while the check was running.
+    if (!currentMonitor) {
+      return [];
+    }
 
-		// Determine how many consecutive checks are required.
-		const requiredChecks = Math.max(
-			currentMonitor.failureThreshold,
-			currentMonitor.recoveryThreshold,
-		);
+    // Save the current check result.
+    await tx.checkResult.create({
+      data: {
+        monitorId: monitor.id,
+        statusCode: result.statusCode,
+        latencyMs: result.latencyMs,
+        success: result.success,
+        errorMessage: result.errorMessage,
+        checkedAt,
+      },
+    });
 
-		const recentResults = await tx.checkResult.findMany({
-			where: {
-				monitorId: monitor.id,
-			},
-			orderBy: {
-				checkedAt: "desc",
-			},
-			take: requiredChecks,
-		});
+    // Determine how many consecutive checks are required.
+    const requiredChecks = Math.max(
+      currentMonitor.failureThreshold,
+      currentMonitor.recoveryThreshold,
+    );
 
-		// Count consecutive results matching the current result.
-		const firstDifferentResult = recentResults.findIndex(
-			(check) => check.success !== result.success,
-		);
+    const recentResults = await tx.checkResult.findMany({
+      where: {
+        monitorId: monitor.id,
+      },
+      orderBy: {
+        checkedAt: "desc",
+      },
+      take: requiredChecks,
+    });
 
-		const consecutiveCount =
-			firstDifferentResult === -1
-				? recentResults.length
-				: firstDifferentResult;
+    // Count consecutive results matching the current result.
+    const firstDifferentResult = recentResults.findIndex(
+      (check) => check.success !== result.success,
+    );
 
-		let nextStatus = currentMonitor.status;
+    const consecutiveCount =
+      firstDifferentResult === -1
+        ? recentResults.length
+        : firstDifferentResult;
 
-		// Determine whether the monitor should change state.
-		if (result.success) {
-			if (currentMonitor.status === "DOWN") {
-				if (consecutiveCount >= currentMonitor.recoveryThreshold) {
-					nextStatus = "UP";
-				}
-			} else {
-				// An UNKNOWN monitor becomes UP after its first success.
-				nextStatus = "UP";
-			}
-		} else {
-			if (consecutiveCount >= currentMonitor.failureThreshold) {
-				nextStatus = "DOWN";
-			}
-		}
+    let nextStatus = currentMonitor.status;
 
-		// Update the monitor status.
-		await tx.monitor.update({
-			where: {
-				id: monitor.id,
-			},
-			data: {
-				status: nextStatus,
-				lastCheckedAt: checkedAt,
-				nextCheckAt,
-			},
-		});
+    // Determine whether the monitor should change state.
+    if (result.success) {
+      if (currentMonitor.status === "DOWN") {
+        if (consecutiveCount >= currentMonitor.recoveryThreshold) {
+          nextStatus = "UP";
+        }
+      } else {
+        nextStatus = "UP";
+      }
+    } else {
+      if (consecutiveCount >= currentMonitor.failureThreshold) {
+        nextStatus = "DOWN";
+      }
+    }
 
-		// Find the existing open incident, if any.
-		const openIncident = await tx.incident.findFirst({
-			where: {
-				monitorId: monitor.id,
-				status: "OPEN",
-			},
-		});
+    // Update the monitor status.
+    await tx.monitor.update({
+      where: {
+        id: monitor.id,
+      },
+      data: {
+        status: nextStatus,
+        lastCheckedAt: checkedAt,
+        nextCheckAt,
+      },
+    });
 
-		// Open a new incident when the monitor becomes DOWN.
-		if (nextStatus === "DOWN" && !openIncident) {
-			await tx.incident.create({
-				data: {
-					monitorId: monitor.id,
-					status: "OPEN",
-					failureCount: consecutiveCount,
-					startedAt: checkedAt,
-				},
-			});
-		}
+    const openIncident = await tx.incident.findFirst({
+      where: {
+        monitorId: monitor.id,
+        status: "OPEN",
+      },
+    });
 
-		// Update the existing incident during continued failures.
-		else if (nextStatus === "DOWN" && openIncident && !result.success) {
-			await tx.incident.update({
-				where: {
-					id: openIncident.id,
-				},
-				data: {
-					failureCount: {
-						increment: 1,
-					},
-				},
-			});
-		}
+    const owner = await tx.user.findUnique({
+      where: {
+        id: currentMonitor.userId,
+      },
+      select: {
+        email: true,
+      },
+    });
 
-		// Resolve the incident when the recovery threshold is reached.
-		if (
-			nextStatus === "UP" &&
-			currentMonitor.status === "DOWN" &&
-			openIncident
-		) {
-			await tx.incident.update({
-				where: {
-					id: openIncident.id,
-				},
-				data: {
-					status: "RESOLVED",
-					resolvedAt: checkedAt,
-				},
-			});
-		}
-	});
+    // Create incident and its notification.
+    if (nextStatus === "DOWN" && !openIncident) {
+      const incident = await tx.incident.create({
+        data: {
+          monitorId: monitor.id,
+          status: "OPEN",
+          failureCount: consecutiveCount,
+          startedAt: checkedAt,
+        },
+      });
 
-	console.log(
-		`[Monitor] ${monitor.name}: ${
-			result.success ? "UP" : "DOWN"
-		} | ${result.latencyMs}ms`,
-	);
+      if (owner?.email) {
+        const notification = await tx.notification.create({
+          data: {
+            incidentId: incident.id,
+            channel: "EMAIL",
+            eventType: "INCIDENT_OPENED",
+            recipient: owner.email,
+            status: "PENDING",
+          },
+        });
+
+        createdNotificationIds.push(notification.id);
+      }
+    }
+
+    // Update an existing incident during continued failures.
+    else if (
+      nextStatus === "DOWN" &&
+      openIncident &&
+      !result.success
+    ) {
+      await tx.incident.update({
+        where: {
+          id: openIncident.id,
+        },
+        data: {
+          failureCount: {
+            increment: 1,
+          },
+        },
+      });
+    }
+
+    // Resolve incident and create recovery notification.
+    if (
+      nextStatus === "UP" &&
+      currentMonitor.status === "DOWN" &&
+      openIncident
+    ) {
+      await tx.incident.update({
+        where: {
+          id: openIncident.id,
+        },
+        data: {
+          status: "RESOLVED",
+          resolvedAt: checkedAt,
+        },
+      });
+
+      if (owner?.email) {
+        const notification = await tx.notification.create({
+          data: {
+            incidentId: openIncident.id,
+            channel: "EMAIL",
+            eventType: "INCIDENT_RESOLVED",
+            recipient: owner.email,
+            status: "PENDING",
+          },
+        });
+
+        createdNotificationIds.push(notification.id);
+      }
+    }
+
+    return createdNotificationIds;
+  },
+);
+
+// Enqueue notifications after the database transaction commits.
+for (const notificationId of notificationIds) {
+  try {
+    await enqueueNotification(notificationId);
+  } catch (error) {
+    console.error(
+      `[Monitor] Could not enqueue notification ${notificationId}:`,
+      error,
+    );
+  }
+}
+console.log(
+  `[Monitor] ${monitor.name}: ${
+    result.success ? "UP" : "DOWN"
+  } | ${result.latencyMs}ms`,
+);
+
+
 }
 
 function isPublicIp(address: string): boolean {

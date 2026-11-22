@@ -1140,6 +1140,7 @@ export const NotificationScalarFieldEnum = {
   id: 'id',
   incidentId: 'incidentId',
   channel: 'channel',
+  eventType: 'eventType',
   recipient: 'recipient',
   status: 'status',
   errorMessage: 'errorMessage',
@@ -1295,6 +1296,20 @@ export type EnumNotificationChannelFieldRefInput<$PrismaModel> = FieldRefInputTy
  * Reference to a field of type 'NotificationChannel[]'
  */
 export type ListEnumNotificationChannelFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'NotificationChannel[]'>
+    
+
+
+/**
+ * Reference to a field of type 'NotificationEvent'
+ */
+export type EnumNotificationEventFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'NotificationEvent'>
+    
+
+
+/**
+ * Reference to a field of type 'NotificationEvent[]'
+ */
+export type ListEnumNotificationEventFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'NotificationEvent[]'>
     
 
 

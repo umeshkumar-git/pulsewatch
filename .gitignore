@@ -31,3 +31,4 @@ coverage/
 
 # Local data
 *.sqlite
+.env.smtp-backup

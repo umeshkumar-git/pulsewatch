@@ -49,3 +49,11 @@ export const NotificationStatus = {
 } as const
 
 export type NotificationStatus = (typeof NotificationStatus)[keyof typeof NotificationStatus]
+
+
+export const NotificationEvent = {
+  INCIDENT_OPENED: 'INCIDENT_OPENED',
+  INCIDENT_RESOLVED: 'INCIDENT_RESOLVED'
+} as const
+
+export type NotificationEvent = (typeof NotificationEvent)[keyof typeof NotificationEvent]

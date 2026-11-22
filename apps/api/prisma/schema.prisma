@@ -135,10 +135,12 @@ model StatusPageMonitor {
   @@map("status_page_monitors")
 }
 
+
 model Notification {
   id           String              @id @default(uuid()) @db.Uuid
   incidentId   String              @map("incident_id") @db.Uuid
   channel      NotificationChannel @default(EMAIL)
+  eventType    NotificationEvent   @default(INCIDENT_OPENED) @map("event_type")
   recipient    String
   status       NotificationStatus  @default(PENDING)
   errorMessage String?             @map("error_message") @db.Text
@@ -147,6 +149,7 @@ model Notification {
 
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
+  @@unique([incidentId, channel, recipient, eventType])
   @@index([status, createdAt])
   @@map("notifications")
 }
@@ -168,4 +171,11 @@ model RefreshSession {
   @@index([userId, revokedAt])
   @@index([familyId])
   @@map("refresh_sessions")
+}
+
+enum NotificationEvent {
+  INCIDENT_OPENED
+  INCIDENT_RESOLVED
+
+  @@map("notification_event")
 }
