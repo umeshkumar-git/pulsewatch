@@ -58,7 +58,7 @@ export async function processMonitorCheck(
 		// Claim a new generation before starting the HTTP request.
 		const generations = await prisma.$transaction(async (tx) => {
 			return tx.$queryRaw<{ check_generation: bigint }[]>`
-                                UPDATE monitors
+                                 UPDATE monitors
                                 SET check_generation = check_generation + 1
                                 WHERE id = ${monitor.id}::uuid
                                   AND enabled = true
@@ -102,7 +102,7 @@ export async function processMonitorCheck(
                         `;
 
 			if (lockedMonitors.length === 0) {
-				return [];
+				return null;
 			}
 
 			const currentMonitor = await tx.monitor.findFirst({
@@ -119,7 +119,7 @@ export async function processMonitorCheck(
 				console.log(
 					`[Monitor] Discarding stale result for ${monitor.name}`,
 				);
-				return [];
+				return null;
 			}
 
 			const checkedAt = new Date();
@@ -262,6 +262,10 @@ export async function processMonitorCheck(
 
 			return createdNotificationIds;
 		});
+
+		if (notificationIds === null) {
+			return;
+		}
 
 		// Enqueue notifications after the database transaction commits.
 		for (const notificationId of notificationIds) {

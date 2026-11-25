@@ -285,7 +285,12 @@ describe("processMonitorCheck", () => {
 		txMock.$queryRaw
 			.mockReset()
 			.mockResolvedValueOnce([{ check_generation: 1n }])
-			.mockResolvedValueOnce([]);
+			.mockResolvedValueOnce([{ id: monitor.id }]);
+
+		txMock.monitor.findFirst.mockResolvedValueOnce({
+			...monitor,
+			checkGeneration: 2n,
+		});
 
 		const checkHttp = vi.fn().mockResolvedValue({
 			success: true,
@@ -297,9 +302,79 @@ describe("processMonitorCheck", () => {
 		await processMonitorCheck({ monitorId: monitor.id }, checkHttp);
 
 		expect(checkHttp).toHaveBeenCalledOnce();
+
+		// The stale result must not enter check history.
+		expect(txMock.checkResult.create).not.toHaveBeenCalled();
+
+		// It must not change monitor state or incidents.
+		expect(txMock.monitor.update).not.toHaveBeenCalled();
+		expect(txMock.incident.create).not.toHaveBeenCalled();
+		expect(txMock.incident.update).not.toHaveBeenCalled();
+
+		// It must not create or enqueue notifications.
+		expect(txMock.notification.create).not.toHaveBeenCalled();
+		expect(enqueueNotificationMock).not.toHaveBeenCalled();
+	});
+	it("does not create an incident from a stale failed check", async () => {
+		txMock.$queryRaw
+			.mockReset()
+			.mockResolvedValueOnce([{ check_generation: 1n }])
+			.mockResolvedValueOnce([{ id: monitor.id }]);
+
+		txMock.monitor.findFirst.mockResolvedValueOnce({
+			...monitor,
+			checkGeneration: 2n,
+			status: "UP",
+		});
+
+		const checkHttp = vi.fn().mockResolvedValue({
+			success: false,
+			statusCode: 500,
+			latencyMs: 200,
+			errorMessage: "HTTP 500",
+		});
+
+		await processMonitorCheck({ monitorId: monitor.id }, checkHttp);
+
 		expect(txMock.checkResult.create).not.toHaveBeenCalled();
 		expect(txMock.monitor.update).not.toHaveBeenCalled();
 		expect(txMock.incident.create).not.toHaveBeenCalled();
+		expect(txMock.incident.update).not.toHaveBeenCalled();
+		expect(txMock.notification.create).not.toHaveBeenCalled();
+		expect(enqueueNotificationMock).not.toHaveBeenCalled();
+	});
+
+	it("does not resolve an incident from a stale successful check", async () => {
+		txMock.$queryRaw
+			.mockReset()
+			.mockResolvedValueOnce([{ check_generation: 1n }])
+			.mockResolvedValueOnce([{ id: monitor.id }]);
+
+		txMock.monitor.findFirst.mockResolvedValueOnce({
+			...monitor,
+			checkGeneration: 2n,
+			status: "DOWN",
+		});
+
+		txMock.incident.findFirst.mockResolvedValueOnce({
+			id: "incident-123",
+			status: "OPEN",
+		});
+
+		const checkHttp = vi.fn().mockResolvedValue({
+			success: true,
+			statusCode: 200,
+			latencyMs: 100,
+			errorMessage: null,
+		});
+
+		await processMonitorCheck({ monitorId: monitor.id }, checkHttp);
+
+		expect(txMock.checkResult.create).not.toHaveBeenCalled();
+		expect(txMock.monitor.update).not.toHaveBeenCalled();
+		expect(txMock.incident.update).not.toHaveBeenCalled();
+		expect(txMock.notification.create).not.toHaveBeenCalled();
+		expect(enqueueNotificationMock).not.toHaveBeenCalled();
 	});
 
 	it("discards the HTTP result when the lock is lost during the check", async () => {
