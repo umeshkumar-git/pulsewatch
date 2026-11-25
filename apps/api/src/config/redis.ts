@@ -1,3 +1,4 @@
+import Redis from "ioredis";
 import type { ConnectionOptions } from "bullmq";
 
 import { env } from "./env";
@@ -22,3 +23,4 @@ export const redisConnection: ConnectionOptions = {
 
 	...(redisUrl.protocol === "rediss:" ? { tls: {} } : {}),
 };
+export const redisClient = new Redis(redisConnection);

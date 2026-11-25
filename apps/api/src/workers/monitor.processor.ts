@@ -1,3 +1,4 @@
+import { evaluateMonitorState } from "./monitor-state";
 import { enqueueNotification } from "../queues/notification.queue";
 import http from "node:http";
 import https from "node:https";
@@ -7,245 +8,288 @@ import { performance } from "node:perf_hooks";
 import ipaddr from "ipaddr.js";
 
 import { prisma } from "../config/database";
+
+import { acquireMonitorLock } from "./monitor-lock";
 import type { MonitorJobData } from "../queues/monitor.queue";
 
-interface HttpCheckResult {
+export interface HttpCheckResult {
 	success: boolean;
 	statusCode: number | null;
 	latencyMs: number;
 	errorMessage: string | null;
 }
 
-export async function processMonitorCheck(data: MonitorJobData) {
-	const monitor = await prisma.monitor.findUnique({
-		where: {
-			id: data.monitorId,
-		},
-	});
+type HttpCheckFunction = (
+	url: string,
+	method: "GET" | "HEAD",
+	timeoutMs: number,
+) => Promise<HttpCheckResult>;
 
-	// The monitor may have been deleted.
-	if (!monitor) {
+export async function processMonitorCheck(
+	data: MonitorJobData,
+	checkHttp: HttpCheckFunction = performHttpCheck,
+) {
+	const lock = await acquireMonitorLock(data.monitorId);
+
+	// Another worker is already checking this monitor.
+	if (!lock) {
+		console.log(
+			`[Monitor] Skipping ${data.monitorId}: check already in progress`,
+		);
 		return;
 	}
 
-	// Do not execute checks for paused monitors.
-	if (!monitor.enabled) {
-		return;
+	try {
+		const monitor = await prisma.monitor.findUnique({
+			where: {
+				id: data.monitorId,
+			},
+		});
+
+		if (!monitor || !monitor.enabled) {
+			return;
+		}
+
+		// Verify Redis lock ownership before claiming a generation.
+		if (!(await lock.assertOwned())) {
+			return;
+		}
+
+		// Claim a new generation before starting the HTTP request.
+		const generations = await prisma.$transaction(async (tx) => {
+			return tx.$queryRaw<{ check_generation: bigint }[]>`
+                                UPDATE monitors
+                                SET check_generation = check_generation + 1
+                                WHERE id = ${monitor.id}::uuid
+                                  AND enabled = true
+                                RETURNING check_generation
+                        `;
+		});
+
+		if (generations.length === 0) {
+			return;
+		}
+
+		const generation = generations[0].check_generation;
+
+		console.log(
+			`[Monitor] Checking ${monitor.name} (${monitor.url}), generation ${generation}`,
+		);
+
+		const result = await checkHttp(
+			monitor.url,
+			monitor.method,
+			monitor.timeoutMs,
+		);
+
+		// Do not save a result if this worker lost its Redis lock.
+		if (!(await lock.assertOwned())) {
+			console.warn(
+				`[Monitor] Discarding result for ${monitor.name}: lock lost`,
+			);
+			return;
+		}
+
+		// Save the result only if this is still the latest generation.
+		const notificationIds = await prisma.$transaction(async (tx) => {
+			const createdNotificationIds: string[] = [];
+
+			const lockedMonitors = await tx.$queryRaw<{ id: string }[]>`
+                                SELECT id
+                                FROM monitors
+                                WHERE id = ${monitor.id}::uuid
+                                FOR UPDATE
+                        `;
+
+			if (lockedMonitors.length === 0) {
+				return [];
+			}
+
+			const currentMonitor = await tx.monitor.findFirst({
+				where: {
+					id: monitor.id,
+					enabled: true,
+				},
+			});
+
+			if (
+				!currentMonitor ||
+				currentMonitor.checkGeneration !== generation
+			) {
+				console.log(
+					`[Monitor] Discarding stale result for ${monitor.name}`,
+				);
+				return [];
+			}
+
+			const checkedAt = new Date();
+
+			const nextCheckAt = new Date(
+				checkedAt.getTime() + currentMonitor.intervalSeconds * 1000,
+			);
+
+			await tx.checkResult.create({
+				data: {
+					monitorId: monitor.id,
+					statusCode: result.statusCode,
+					latencyMs: result.latencyMs,
+					success: result.success,
+					errorMessage: result.errorMessage,
+					checkedAt,
+				},
+			});
+
+			const requiredChecks = Math.max(
+				currentMonitor.failureThreshold,
+				currentMonitor.recoveryThreshold,
+			);
+
+			const recentResults = await tx.checkResult.findMany({
+				where: {
+					monitorId: monitor.id,
+				},
+				orderBy: {
+					checkedAt: "desc",
+				},
+				take: requiredChecks,
+			});
+
+			const state = evaluateMonitorState({
+				currentStatus: currentMonitor.status,
+				failureThreshold: currentMonitor.failureThreshold,
+				recoveryThreshold: currentMonitor.recoveryThreshold,
+				recentResults: recentResults.map((check) => check.success),
+			});
+
+			const { nextStatus, consecutiveCount } = state;
+
+			await tx.monitor.update({
+				where: {
+					id: monitor.id,
+				},
+				data: {
+					status: nextStatus,
+					lastCheckedAt: checkedAt,
+					nextCheckAt,
+				},
+			});
+
+			const openIncident = await tx.incident.findFirst({
+				where: {
+					monitorId: monitor.id,
+					status: "OPEN",
+				},
+			});
+
+			const owner = await tx.user.findUnique({
+				where: {
+					id: currentMonitor.userId,
+				},
+				select: {
+					email: true,
+				},
+			});
+
+			if (nextStatus === "DOWN" && !openIncident) {
+				const incident = await tx.incident.create({
+					data: {
+						monitorId: monitor.id,
+						status: "OPEN",
+						failureCount: consecutiveCount,
+						startedAt: checkedAt,
+					},
+				});
+
+				if (owner?.email) {
+					const notification = await tx.notification.create({
+						data: {
+							incidentId: incident.id,
+							channel: "EMAIL",
+							eventType: "INCIDENT_OPENED",
+							recipient: owner.email,
+							status: "PENDING",
+						},
+					});
+
+					createdNotificationIds.push(notification.id);
+				}
+			} else if (
+				nextStatus === "DOWN" &&
+				openIncident &&
+				!result.success
+			) {
+				await tx.incident.update({
+					where: {
+						id: openIncident.id,
+					},
+					data: {
+						failureCount: {
+							increment: 1,
+						},
+					},
+				});
+			}
+
+			if (
+				nextStatus === "UP" &&
+				currentMonitor.status === "DOWN" &&
+				openIncident
+			) {
+				await tx.incident.update({
+					where: {
+						id: openIncident.id,
+					},
+					data: {
+						status: "RESOLVED",
+						resolvedAt: checkedAt,
+					},
+				});
+
+				if (owner?.email) {
+					const notification = await tx.notification.create({
+						data: {
+							incidentId: openIncident.id,
+							channel: "EMAIL",
+							eventType: "INCIDENT_RESOLVED",
+							recipient: owner.email,
+							status: "PENDING",
+						},
+					});
+
+					createdNotificationIds.push(notification.id);
+				}
+			}
+
+			return createdNotificationIds;
+		});
+
+		// Enqueue notifications after the database transaction commits.
+		for (const notificationId of notificationIds) {
+			try {
+				await enqueueNotification(notificationId);
+			} catch (error) {
+				console.error(
+					`[Monitor] Could not enqueue notification ${notificationId}:`,
+					error,
+				);
+			}
+		}
+
+		console.log(
+			`[Monitor] ${monitor.name}: ${
+				result.success ? "UP" : "DOWN"
+			} | ${result.latencyMs}ms`,
+		);
+	} finally {
+		try {
+			await lock.release();
+		} catch (error) {
+			console.error(
+				`[Monitor] Failed to release lock for monitor ${data.monitorId}:`,
+				error,
+			);
+		}
 	}
-
-	console.log(`[Monitor] Checking ${monitor.name} (${monitor.url})`);
-
-	const result = await performHttpCheck(
-		monitor.url,
-		monitor.method,
-		monitor.timeoutMs,
-	);
-
-	const checkedAt = new Date();
-
-	const nextCheckAt = new Date(
-		checkedAt.getTime() + monitor.intervalSeconds * 1000,
-	);
-
-	// Store the result and update monitor state together.
-	
-// Store the result, update monitor state, and create notifications together.
-const notificationIds = await prisma.$transaction(
-  async (tx) => {
-    const createdNotificationIds: string[] = [];
-
-    const currentMonitor = await tx.monitor.findFirst({
-      where: {
-        id: monitor.id,
-        enabled: true,
-      },
-    });
-
-    // Monitor was paused or deleted while the check was running.
-    if (!currentMonitor) {
-      return [];
-    }
-
-    // Save the current check result.
-    await tx.checkResult.create({
-      data: {
-        monitorId: monitor.id,
-        statusCode: result.statusCode,
-        latencyMs: result.latencyMs,
-        success: result.success,
-        errorMessage: result.errorMessage,
-        checkedAt,
-      },
-    });
-
-    // Determine how many consecutive checks are required.
-    const requiredChecks = Math.max(
-      currentMonitor.failureThreshold,
-      currentMonitor.recoveryThreshold,
-    );
-
-    const recentResults = await tx.checkResult.findMany({
-      where: {
-        monitorId: monitor.id,
-      },
-      orderBy: {
-        checkedAt: "desc",
-      },
-      take: requiredChecks,
-    });
-
-    // Count consecutive results matching the current result.
-    const firstDifferentResult = recentResults.findIndex(
-      (check) => check.success !== result.success,
-    );
-
-    const consecutiveCount =
-      firstDifferentResult === -1
-        ? recentResults.length
-        : firstDifferentResult;
-
-    let nextStatus = currentMonitor.status;
-
-    // Determine whether the monitor should change state.
-    if (result.success) {
-      if (currentMonitor.status === "DOWN") {
-        if (consecutiveCount >= currentMonitor.recoveryThreshold) {
-          nextStatus = "UP";
-        }
-      } else {
-        nextStatus = "UP";
-      }
-    } else {
-      if (consecutiveCount >= currentMonitor.failureThreshold) {
-        nextStatus = "DOWN";
-      }
-    }
-
-    // Update the monitor status.
-    await tx.monitor.update({
-      where: {
-        id: monitor.id,
-      },
-      data: {
-        status: nextStatus,
-        lastCheckedAt: checkedAt,
-        nextCheckAt,
-      },
-    });
-
-    const openIncident = await tx.incident.findFirst({
-      where: {
-        monitorId: monitor.id,
-        status: "OPEN",
-      },
-    });
-
-    const owner = await tx.user.findUnique({
-      where: {
-        id: currentMonitor.userId,
-      },
-      select: {
-        email: true,
-      },
-    });
-
-    // Create incident and its notification.
-    if (nextStatus === "DOWN" && !openIncident) {
-      const incident = await tx.incident.create({
-        data: {
-          monitorId: monitor.id,
-          status: "OPEN",
-          failureCount: consecutiveCount,
-          startedAt: checkedAt,
-        },
-      });
-
-      if (owner?.email) {
-        const notification = await tx.notification.create({
-          data: {
-            incidentId: incident.id,
-            channel: "EMAIL",
-            eventType: "INCIDENT_OPENED",
-            recipient: owner.email,
-            status: "PENDING",
-          },
-        });
-
-        createdNotificationIds.push(notification.id);
-      }
-    }
-
-    // Update an existing incident during continued failures.
-    else if (
-      nextStatus === "DOWN" &&
-      openIncident &&
-      !result.success
-    ) {
-      await tx.incident.update({
-        where: {
-          id: openIncident.id,
-        },
-        data: {
-          failureCount: {
-            increment: 1,
-          },
-        },
-      });
-    }
-
-    // Resolve incident and create recovery notification.
-    if (
-      nextStatus === "UP" &&
-      currentMonitor.status === "DOWN" &&
-      openIncident
-    ) {
-      await tx.incident.update({
-        where: {
-          id: openIncident.id,
-        },
-        data: {
-          status: "RESOLVED",
-          resolvedAt: checkedAt,
-        },
-      });
-
-      if (owner?.email) {
-        const notification = await tx.notification.create({
-          data: {
-            incidentId: openIncident.id,
-            channel: "EMAIL",
-            eventType: "INCIDENT_RESOLVED",
-            recipient: owner.email,
-            status: "PENDING",
-          },
-        });
-
-        createdNotificationIds.push(notification.id);
-      }
-    }
-
-    return createdNotificationIds;
-  },
-);
-
-// Enqueue notifications after the database transaction commits.
-for (const notificationId of notificationIds) {
-  try {
-    await enqueueNotification(notificationId);
-  } catch (error) {
-    console.error(
-      `[Monitor] Could not enqueue notification ${notificationId}:`,
-      error,
-    );
-  }
-}
-console.log(
-  `[Monitor] ${monitor.name}: ${
-    result.success ? "UP" : "DOWN"
-  } | ${result.latencyMs}ms`,
-);
-
-
 }
 
 function isPublicIp(address: string): boolean {

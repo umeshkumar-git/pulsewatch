@@ -1,9 +1,21 @@
 import dotenv from "dotenv";
 import { z } from "zod";
+import path from "node:path";
+
+const envFile =
+	process.env.NODE_ENV === "test"
+		? path.resolve(__dirname, "../../../.env.test")
+		: path.resolve(__dirname, "../../../../.env");
 
 dotenv.config({
-	path: "../../.env",
+	path: envFile,
 });
+if (
+	process.env.NODE_ENV === "test" &&
+	!process.env.DATABASE_URL?.includes("/pulsewatch_test")
+) {
+	throw new Error("Integration tests must use the pulsewatch_test database");
+}
 
 const envSchema = z.object({
 	NODE_ENV: z

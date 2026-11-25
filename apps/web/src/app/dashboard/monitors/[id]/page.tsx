@@ -26,6 +26,22 @@ function MonitorDetailsContent() {
 	const [error, setError] = useState("");
 	const [loading, setLoading] = useState(true);
 
+	const [editing, setEditing] = useState(false);
+	const [saving, setSaving] = useState(false);
+	const [actionLoading, setActionLoading] = useState(false);
+	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+	const [actionError, setActionError] = useState("");
+
+	const [formData, setFormData] = useState({
+		name: "",
+		url: "",
+		method: "GET" as "GET" | "HEAD",
+		intervalSeconds: 60,
+		timeoutMs: 10000,
+		failureThreshold: 3,
+		recoveryThreshold: 2,
+	});
+
 	useEffect(() => {
 		let active = true;
 
@@ -64,6 +80,110 @@ function MonitorDetailsContent() {
 			active = false;
 		};
 	}, [id, router]);
+	function handleEdit() {
+		if (!monitor) return;
+
+		setFormData({
+			name: monitor.name,
+			url: monitor.url,
+			method: monitor.method,
+			intervalSeconds: monitor.intervalSeconds,
+			timeoutMs: monitor.timeoutMs,
+			failureThreshold: monitor.failureThreshold,
+			recoveryThreshold: monitor.recoveryThreshold,
+		});
+
+		setActionError("");
+		setEditing(true);
+	}
+
+	async function handleSave() {
+		setSaving(true);
+		setActionError("");
+
+		try {
+			const result = await apiFetch<{ monitor: Monitor }>(
+				`/monitors/${id}`,
+				{
+					method: "PATCH",
+					body: JSON.stringify(formData),
+				},
+			);
+
+			setMonitor((current) =>
+				current ? { ...current, ...result.monitor } : current,
+			);
+			setEditing(false);
+		} catch (err) {
+			if (err instanceof ApiError && err.status === 401) {
+				router.replace("/login");
+				return;
+			}
+
+			setActionError(
+				err instanceof Error
+					? err.message
+					: "Unable to update monitor.",
+			);
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	async function handlePauseResume() {
+		if (!monitor) return;
+
+		setActionLoading(true);
+		setActionError("");
+
+		const action = monitor.status === "PAUSED" ? "resume" : "pause";
+
+		try {
+			const result = await apiFetch<{ monitor: Monitor }>(
+				`/monitors/${id}/${action}`,
+				{ method: "POST" },
+			);
+
+			setMonitor((current) =>
+				current ? { ...current, ...result.monitor } : current,
+			);
+		} catch (err) {
+			if (err instanceof ApiError && err.status === 401) {
+				router.replace("/login");
+				return;
+			}
+
+			setActionError(
+				err instanceof Error
+					? err.message
+					: "Unable to change monitor status.",
+			);
+		} finally {
+			setActionLoading(false);
+		}
+	}
+
+	async function handleDelete() {
+		setActionLoading(true);
+		setActionError("");
+
+		try {
+			await apiFetch(`/monitors/${id}`, { method: "DELETE" });
+			router.replace("/dashboard");
+		} catch (err) {
+			if (err instanceof ApiError && err.status === 401) {
+				router.replace("/login");
+				return;
+			}
+
+			setActionError(
+				err instanceof Error
+					? err.message
+					: "Unable to delete monitor.",
+			);
+			setActionLoading(false);
+		}
+	}
 
 	if (loading) {
 		return (
@@ -105,10 +225,262 @@ function MonitorDetailsContent() {
 						</p>
 					</div>
 
-					<span className="rounded-full bg-slate-800 px-3 py-2 text-sm">
-						{monitor.status}
-					</span>
+					<div className="flex flex-wrap items-center gap-3">
+						<span className="rounded-full bg-slate-800 px-3 py-2 text-sm">
+							{monitor.status}
+						</span>
+
+						<button
+							onClick={handleEdit}
+							className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium hover:bg-cyan-500"
+						>
+							Edit
+						</button>
+
+						<button
+							onClick={handlePauseResume}
+							disabled={actionLoading}
+							className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium hover:bg-amber-500 disabled:opacity-50"
+						>
+							{actionLoading
+								? "Please wait..."
+								: monitor.status === "PAUSED"
+									? "Resume"
+									: "Pause"}
+						</button>
+
+						<button
+							onClick={() => setShowDeleteConfirm(true)}
+							className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium hover:bg-red-500"
+						>
+							Delete
+						</button>
+					</div>
 				</div>
+
+				{actionError && (
+					<p className="mt-4 text-sm text-red-400">{actionError}</p>
+				)}
+
+				{editing && (
+					<section className="mt-6 rounded-xl border border-slate-700 bg-slate-900 p-6">
+						<h2 className="mb-5 text-xl font-semibold">
+							Edit Monitor
+						</h2>
+
+						<form
+							onSubmit={(event) => {
+								event.preventDefault();
+								void handleSave();
+							}}
+							className="grid gap-5 sm:grid-cols-2"
+						>
+							<label className="text-sm text-slate-300">
+								Monitor name
+								<input
+									required
+									minLength={2}
+									maxLength={80}
+									value={formData.name}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											name: e.target.value,
+										})
+									}
+									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
+								/>
+							</label>
+
+							<label className="text-sm text-slate-300">
+								Website URL
+								<input
+									required
+									type="url"
+									value={formData.url}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											url: e.target.value,
+										})
+									}
+									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
+								/>
+							</label>
+
+							<label className="text-sm text-slate-300">
+								HTTP method
+								<select
+									value={formData.method}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											method: e.target.value as
+												"GET" | "HEAD",
+										})
+									}
+									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
+								>
+									<option value="GET">GET</option>
+									<option value="HEAD">HEAD</option>
+								</select>
+							</label>
+
+							<label className="text-sm text-slate-300">
+								Check interval (seconds)
+								<input
+									required
+									type="number"
+									min={30}
+									max={86400}
+									value={formData.intervalSeconds}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											intervalSeconds: Number(
+												e.target.value,
+											),
+										})
+									}
+									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
+								/>
+							</label>
+
+							<label className="text-sm text-slate-300">
+								Timeout (milliseconds)
+								<input
+									required
+									type="number"
+									min={1000}
+									max={30000}
+									value={formData.timeoutMs}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											timeoutMs: Number(e.target.value),
+										})
+									}
+									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
+								/>
+							</label>
+
+							<label className="text-sm text-slate-300">
+								Failure threshold
+								<input
+									required
+									type="number"
+									min={1}
+									max={10}
+									value={formData.failureThreshold}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											failureThreshold: Number(
+												e.target.value,
+											),
+										})
+									}
+									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
+								/>
+							</label>
+
+							<label className="text-sm text-slate-300">
+								Recovery threshold
+								<input
+									required
+									type="number"
+									min={1}
+									max={10}
+									value={formData.recoveryThreshold}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											recoveryThreshold: Number(
+												e.target.value,
+											),
+										})
+									}
+									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
+								/>
+							</label>
+
+							<div className="flex flex-wrap gap-3 sm:col-span-2">
+								<button
+									type="submit"
+									disabled={saving}
+									className="rounded-lg bg-cyan-600 px-5 py-2 font-medium hover:bg-cyan-500 disabled:opacity-50"
+								>
+									{saving ? "Saving..." : "Save Changes"}
+								</button>
+
+								<button
+									type="button"
+									onClick={() => setEditing(false)}
+									disabled={saving}
+									className="rounded-lg border border-slate-600 px-5 py-2 hover:bg-slate-800"
+								>
+									Cancel
+								</button>
+							</div>
+						</form>
+					</section>
+				)}
+				{showDeleteConfirm && (
+					<div
+						className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5"
+						role="dialog"
+						aria-modal="true"
+						aria-labelledby="delete-monitor-title"
+					>
+						<div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-xl">
+							<h2
+								id="delete-monitor-title"
+								className="text-xl font-semibold text-white"
+							>
+								Delete monitor?
+							</h2>
+
+							<p className="mt-3 text-sm text-slate-400">
+								Are you sure you want to delete{" "}
+								<span className="font-semibold text-white">
+									{monitor.name}
+								</span>
+								? This action cannot be undone.
+							</p>
+
+							{actionError && (
+								<p className="mt-4 text-sm text-red-400">
+									{actionError}
+								</p>
+							)}
+
+							<div className="mt-6 flex justify-end gap-3">
+								<button
+									type="button"
+									onClick={() => {
+										setShowDeleteConfirm(false);
+										setActionError("");
+									}}
+									disabled={actionLoading}
+									className="rounded-lg border border-slate-600 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+								>
+									Cancel
+								</button>
+
+								<button
+									type="button"
+									onClick={handleDelete}
+									disabled={actionLoading}
+									className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium hover:bg-red-500 disabled:opacity-50"
+								>
+									{actionLoading
+										? "Deleting..."
+										: "Confirm Delete"}
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
 
 				<section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 					{[

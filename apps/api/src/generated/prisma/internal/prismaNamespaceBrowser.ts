@@ -101,6 +101,7 @@ export const MonitorScalarFieldEnum = {
   recoveryThreshold: 'recoveryThreshold',
   status: 'status',
   enabled: 'enabled',
+  checkGeneration: 'checkGeneration',
   lastCheckedAt: 'lastCheckedAt',
   nextCheckAt: 'nextCheckAt',
   createdAt: 'createdAt',

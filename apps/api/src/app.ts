@@ -1,3 +1,4 @@
+import statusPageRoutes from "./modules/status-pages/status-page.routes";
 import incidentRoutes from "./modules/incidents/incident.routes";
 import monitorRoutes from "./modules/monitors/monitor.routes";
 import cookieParser from "cookie-parser";
@@ -15,7 +16,6 @@ const app = express();
 
 app.disable("x-powered-by");
 
-
 app.use(helmet());
 
 app.use(
@@ -30,6 +30,33 @@ app.use(cookieParser());
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/monitors", monitorRoutes);
 app.use("/api/v1/incidents", incidentRoutes);
+app.use("/api/v1/status-pages", statusPageRoutes);	
+
+app.get("/api/v1/auth/me", requireAuth, async (req, res) => {
+	const user = await prisma.user.findUnique({
+		where: {
+			id: req.user!.id,
+		},
+		select: {
+			id: true,
+			name: true,
+			email: true,
+			createdAt: true,
+		},
+	});
+
+	if (!user) {
+		return res.status(404).json({
+			success: false,
+			message: "User not found",
+		});
+	}
+
+	return res.status(200).json({
+		success: true,
+		data: { user },
+	});
+});
 
 app.get("/api/v1/health", async (_req, res) => {
 	try {
@@ -44,31 +71,6 @@ app.get("/api/v1/health", async (_req, res) => {
 				environment: env.NODE_ENV,
 				timestamp: new Date().toISOString(),
 			},
-		});
-		app.get("/api/v1/auth/me", requireAuth, async (req, res) => {
-			const user = await prisma.user.findUnique({
-				where: {
-					id: req.user!.id,
-				},
-				select: {
-					id: true,
-					name: true,
-					email: true,
-					createdAt: true,
-				},
-			});
-
-			if (!user) {
-				return res.status(404).json({
-					success: false,
-					message: "User not found",
-				});
-			}
-
-			return res.status(200).json({
-				success: true,
-				data: { user },
-			});
 		});
 	} catch (error) {
 		console.error("Database health check failed:", error);

@@ -31,6 +31,7 @@ export type MonitorAvgAggregateOutputType = {
   timeoutMs: number | null
   failureThreshold: number | null
   recoveryThreshold: number | null
+  checkGeneration: number | null
 }
 
 export type MonitorSumAggregateOutputType = {
@@ -38,6 +39,7 @@ export type MonitorSumAggregateOutputType = {
   timeoutMs: number | null
   failureThreshold: number | null
   recoveryThreshold: number | null
+  checkGeneration: bigint | null
 }
 
 export type MonitorMinAggregateOutputType = {
@@ -52,6 +54,7 @@ export type MonitorMinAggregateOutputType = {
   recoveryThreshold: number | null
   status: $Enums.MonitorStatus | null
   enabled: boolean | null
+  checkGeneration: bigint | null
   lastCheckedAt: Date | null
   nextCheckAt: Date | null
   createdAt: Date | null
@@ -70,6 +73,7 @@ export type MonitorMaxAggregateOutputType = {
   recoveryThreshold: number | null
   status: $Enums.MonitorStatus | null
   enabled: boolean | null
+  checkGeneration: bigint | null
   lastCheckedAt: Date | null
   nextCheckAt: Date | null
   createdAt: Date | null
@@ -88,6 +92,7 @@ export type MonitorCountAggregateOutputType = {
   recoveryThreshold: number
   status: number
   enabled: number
+  checkGeneration: number
   lastCheckedAt: number
   nextCheckAt: number
   createdAt: number
@@ -101,6 +106,7 @@ export type MonitorAvgAggregateInputType = {
   timeoutMs?: true
   failureThreshold?: true
   recoveryThreshold?: true
+  checkGeneration?: true
 }
 
 export type MonitorSumAggregateInputType = {
@@ -108,6 +114,7 @@ export type MonitorSumAggregateInputType = {
   timeoutMs?: true
   failureThreshold?: true
   recoveryThreshold?: true
+  checkGeneration?: true
 }
 
 export type MonitorMinAggregateInputType = {
@@ -122,6 +129,7 @@ export type MonitorMinAggregateInputType = {
   recoveryThreshold?: true
   status?: true
   enabled?: true
+  checkGeneration?: true
   lastCheckedAt?: true
   nextCheckAt?: true
   createdAt?: true
@@ -140,6 +148,7 @@ export type MonitorMaxAggregateInputType = {
   recoveryThreshold?: true
   status?: true
   enabled?: true
+  checkGeneration?: true
   lastCheckedAt?: true
   nextCheckAt?: true
   createdAt?: true
@@ -158,6 +167,7 @@ export type MonitorCountAggregateInputType = {
   recoveryThreshold?: true
   status?: true
   enabled?: true
+  checkGeneration?: true
   lastCheckedAt?: true
   nextCheckAt?: true
   createdAt?: true
@@ -263,6 +273,7 @@ export type MonitorGroupByOutputType = {
   recoveryThreshold: number
   status: $Enums.MonitorStatus
   enabled: boolean
+  checkGeneration: bigint
   lastCheckedAt: Date | null
   nextCheckAt: Date | null
   createdAt: Date
@@ -304,6 +315,7 @@ export type MonitorWhereInput = {
   recoveryThreshold?: Prisma.IntFilter<"Monitor"> | number
   status?: Prisma.EnumMonitorStatusFilter<"Monitor"> | $Enums.MonitorStatus
   enabled?: Prisma.BoolFilter<"Monitor"> | boolean
+  checkGeneration?: Prisma.BigIntFilter<"Monitor"> | bigint | number
   lastCheckedAt?: Prisma.DateTimeNullableFilter<"Monitor"> | Date | string | null
   nextCheckAt?: Prisma.DateTimeNullableFilter<"Monitor"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Monitor"> | Date | string
@@ -326,6 +338,7 @@ export type MonitorOrderByWithRelationInput = {
   recoveryThreshold?: Prisma.SortOrder
   status?: Prisma.SortOrder
   enabled?: Prisma.SortOrder
+  checkGeneration?: Prisma.SortOrder
   lastCheckedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   nextCheckAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -351,6 +364,7 @@ export type MonitorWhereUniqueInput = Prisma.AtLeast<{
   recoveryThreshold?: Prisma.IntFilter<"Monitor"> | number
   status?: Prisma.EnumMonitorStatusFilter<"Monitor"> | $Enums.MonitorStatus
   enabled?: Prisma.BoolFilter<"Monitor"> | boolean
+  checkGeneration?: Prisma.BigIntFilter<"Monitor"> | bigint | number
   lastCheckedAt?: Prisma.DateTimeNullableFilter<"Monitor"> | Date | string | null
   nextCheckAt?: Prisma.DateTimeNullableFilter<"Monitor"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Monitor"> | Date | string
@@ -373,6 +387,7 @@ export type MonitorOrderByWithAggregationInput = {
   recoveryThreshold?: Prisma.SortOrder
   status?: Prisma.SortOrder
   enabled?: Prisma.SortOrder
+  checkGeneration?: Prisma.SortOrder
   lastCheckedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   nextCheckAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -399,6 +414,7 @@ export type MonitorScalarWhereWithAggregatesInput = {
   recoveryThreshold?: Prisma.IntWithAggregatesFilter<"Monitor"> | number
   status?: Prisma.EnumMonitorStatusWithAggregatesFilter<"Monitor"> | $Enums.MonitorStatus
   enabled?: Prisma.BoolWithAggregatesFilter<"Monitor"> | boolean
+  checkGeneration?: Prisma.BigIntWithAggregatesFilter<"Monitor"> | bigint | number
   lastCheckedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Monitor"> | Date | string | null
   nextCheckAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Monitor"> | Date | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Monitor"> | Date | string
@@ -416,6 +432,7 @@ export type MonitorCreateInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -438,6 +455,7 @@ export type MonitorUncheckedCreateInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -458,6 +476,7 @@ export type MonitorUpdateInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -480,6 +499,7 @@ export type MonitorUncheckedUpdateInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -501,6 +521,7 @@ export type MonitorCreateManyInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -518,6 +539,7 @@ export type MonitorUpdateManyMutationInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -536,6 +558,7 @@ export type MonitorUncheckedUpdateManyInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -564,6 +587,7 @@ export type MonitorCountOrderByAggregateInput = {
   recoveryThreshold?: Prisma.SortOrder
   status?: Prisma.SortOrder
   enabled?: Prisma.SortOrder
+  checkGeneration?: Prisma.SortOrder
   lastCheckedAt?: Prisma.SortOrder
   nextCheckAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -575,6 +599,7 @@ export type MonitorAvgOrderByAggregateInput = {
   timeoutMs?: Prisma.SortOrder
   failureThreshold?: Prisma.SortOrder
   recoveryThreshold?: Prisma.SortOrder
+  checkGeneration?: Prisma.SortOrder
 }
 
 export type MonitorMaxOrderByAggregateInput = {
@@ -589,6 +614,7 @@ export type MonitorMaxOrderByAggregateInput = {
   recoveryThreshold?: Prisma.SortOrder
   status?: Prisma.SortOrder
   enabled?: Prisma.SortOrder
+  checkGeneration?: Prisma.SortOrder
   lastCheckedAt?: Prisma.SortOrder
   nextCheckAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -607,6 +633,7 @@ export type MonitorMinOrderByAggregateInput = {
   recoveryThreshold?: Prisma.SortOrder
   status?: Prisma.SortOrder
   enabled?: Prisma.SortOrder
+  checkGeneration?: Prisma.SortOrder
   lastCheckedAt?: Prisma.SortOrder
   nextCheckAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -618,6 +645,7 @@ export type MonitorSumOrderByAggregateInput = {
   timeoutMs?: Prisma.SortOrder
   failureThreshold?: Prisma.SortOrder
   recoveryThreshold?: Prisma.SortOrder
+  checkGeneration?: Prisma.SortOrder
 }
 
 export type MonitorScalarRelationFilter = {
@@ -687,6 +715,14 @@ export type BoolFieldUpdateOperationsInput = {
   set?: boolean
 }
 
+export type BigIntFieldUpdateOperationsInput = {
+  set?: bigint | number
+  increment?: bigint | number
+  decrement?: bigint | number
+  multiply?: bigint | number
+  divide?: bigint | number
+}
+
 export type NullableDateTimeFieldUpdateOperationsInput = {
   set?: Date | string | null
 }
@@ -744,6 +780,7 @@ export type MonitorCreateWithoutUserInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -764,6 +801,7 @@ export type MonitorUncheckedCreateWithoutUserInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -814,6 +852,7 @@ export type MonitorScalarWhereInput = {
   recoveryThreshold?: Prisma.IntFilter<"Monitor"> | number
   status?: Prisma.EnumMonitorStatusFilter<"Monitor"> | $Enums.MonitorStatus
   enabled?: Prisma.BoolFilter<"Monitor"> | boolean
+  checkGeneration?: Prisma.BigIntFilter<"Monitor"> | bigint | number
   lastCheckedAt?: Prisma.DateTimeNullableFilter<"Monitor"> | Date | string | null
   nextCheckAt?: Prisma.DateTimeNullableFilter<"Monitor"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Monitor"> | Date | string
@@ -831,6 +870,7 @@ export type MonitorCreateWithoutCheckResultsInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -852,6 +892,7 @@ export type MonitorUncheckedCreateWithoutCheckResultsInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -887,6 +928,7 @@ export type MonitorUpdateWithoutCheckResultsInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -908,6 +950,7 @@ export type MonitorUncheckedUpdateWithoutCheckResultsInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -927,6 +970,7 @@ export type MonitorCreateWithoutIncidentsInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -948,6 +992,7 @@ export type MonitorUncheckedCreateWithoutIncidentsInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -983,6 +1028,7 @@ export type MonitorUpdateWithoutIncidentsInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1004,6 +1050,7 @@ export type MonitorUncheckedUpdateWithoutIncidentsInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1023,6 +1070,7 @@ export type MonitorCreateWithoutStatusPagesInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -1044,6 +1092,7 @@ export type MonitorUncheckedCreateWithoutStatusPagesInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -1079,6 +1128,7 @@ export type MonitorUpdateWithoutStatusPagesInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1100,6 +1150,7 @@ export type MonitorUncheckedUpdateWithoutStatusPagesInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1119,6 +1170,7 @@ export type MonitorCreateManyUserInput = {
   recoveryThreshold?: number
   status?: $Enums.MonitorStatus
   enabled?: boolean
+  checkGeneration?: bigint | number
   lastCheckedAt?: Date | string | null
   nextCheckAt?: Date | string | null
   createdAt?: Date | string
@@ -1136,6 +1188,7 @@ export type MonitorUpdateWithoutUserInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1156,6 +1209,7 @@ export type MonitorUncheckedUpdateWithoutUserInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1176,6 +1230,7 @@ export type MonitorUncheckedUpdateManyWithoutUserInput = {
   recoveryThreshold?: Prisma.IntFieldUpdateOperationsInput | number
   status?: Prisma.EnumMonitorStatusFieldUpdateOperationsInput | $Enums.MonitorStatus
   enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  checkGeneration?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   lastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   nextCheckAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1243,6 +1298,7 @@ export type MonitorSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   recoveryThreshold?: boolean
   status?: boolean
   enabled?: boolean
+  checkGeneration?: boolean
   lastCheckedAt?: boolean
   nextCheckAt?: boolean
   createdAt?: boolean
@@ -1266,6 +1322,7 @@ export type MonitorSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   recoveryThreshold?: boolean
   status?: boolean
   enabled?: boolean
+  checkGeneration?: boolean
   lastCheckedAt?: boolean
   nextCheckAt?: boolean
   createdAt?: boolean
@@ -1285,6 +1342,7 @@ export type MonitorSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   recoveryThreshold?: boolean
   status?: boolean
   enabled?: boolean
+  checkGeneration?: boolean
   lastCheckedAt?: boolean
   nextCheckAt?: boolean
   createdAt?: boolean
@@ -1304,13 +1362,14 @@ export type MonitorSelectScalar = {
   recoveryThreshold?: boolean
   status?: boolean
   enabled?: boolean
+  checkGeneration?: boolean
   lastCheckedAt?: boolean
   nextCheckAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type MonitorOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "name" | "url" | "method" | "intervalSeconds" | "timeoutMs" | "failureThreshold" | "recoveryThreshold" | "status" | "enabled" | "lastCheckedAt" | "nextCheckAt" | "createdAt" | "updatedAt", ExtArgs["result"]["monitor"]>
+export type MonitorOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "name" | "url" | "method" | "intervalSeconds" | "timeoutMs" | "failureThreshold" | "recoveryThreshold" | "status" | "enabled" | "checkGeneration" | "lastCheckedAt" | "nextCheckAt" | "createdAt" | "updatedAt", ExtArgs["result"]["monitor"]>
 export type MonitorInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   checkResults?: boolean | Prisma.Monitor$checkResultsArgs<ExtArgs>
@@ -1345,6 +1404,7 @@ export type $MonitorPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     recoveryThreshold: number
     status: $Enums.MonitorStatus
     enabled: boolean
+    checkGeneration: bigint
     lastCheckedAt: Date | null
     nextCheckAt: Date | null
     createdAt: Date
@@ -1787,6 +1847,7 @@ export interface MonitorFieldRefs {
   readonly recoveryThreshold: Prisma.FieldRef<"Monitor", 'Int'>
   readonly status: Prisma.FieldRef<"Monitor", 'MonitorStatus'>
   readonly enabled: Prisma.FieldRef<"Monitor", 'Boolean'>
+  readonly checkGeneration: Prisma.FieldRef<"Monitor", 'BigInt'>
   readonly lastCheckedAt: Prisma.FieldRef<"Monitor", 'DateTime'>
   readonly nextCheckAt: Prisma.FieldRef<"Monitor", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"Monitor", 'DateTime'>

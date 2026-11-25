@@ -18,6 +18,13 @@ export class MonitorError extends Error {
 		this.name = "MonitorError";
 	}
 }
+function toPublicMonitor<T extends { checkGeneration: bigint }>(
+	monitor: T,
+): Omit<T, "checkGeneration"> {
+	const { checkGeneration, ...publicMonitor } = monitor;
+	void checkGeneration;
+	return publicMonitor;
+}
 
 // CREATE MONITOR
 export async function createMonitor(userId: string, input: CreateMonitorInput) {
@@ -47,7 +54,7 @@ export async function createMonitor(userId: string, input: CreateMonitorInput) {
 
 	await scheduleMonitorCheck(monitor.id, monitor.intervalSeconds);
 
-	return monitor;
+	return toPublicMonitor(monitor);
 }
 
 // GET ALL MONITORS
@@ -76,7 +83,7 @@ export async function getMonitors(userId: string, page: number, limit: number) {
 	]);
 
 	return {
-		monitors,
+		monitors: monitors.map(toPublicMonitor),
 		pagination: {
 			page,
 			limit,
@@ -153,13 +160,17 @@ export async function updateMonitor(
 	}
 
 	if (input.intervalSeconds !== undefined) {
-		await scheduleMonitorCheck(
-			updatedMonitor.id,
-			updatedMonitor.intervalSeconds,
-		);
+		if (updatedMonitor.enabled) {
+			await scheduleMonitorCheck(
+				updatedMonitor.id,
+				updatedMonitor.intervalSeconds,
+			);
+		} else {
+			await unscheduleMonitorCheck(updatedMonitor.id);
+		}
 	}
 
-	return updatedMonitor;
+	return toPublicMonitor(updatedMonitor);
 }
 
 // DELETE MONITOR
@@ -210,7 +221,7 @@ export async function pauseMonitor(userId: string, monitorId: string) {
 		throw new MonitorError("MONITOR_NOT_FOUND", 404);
 	}
 
-	return updatedMonitor;
+	return toPublicMonitor(updatedMonitor);
 }
 
 // RESUME MONITOR
@@ -244,7 +255,7 @@ export async function resumeMonitor(userId: string, monitorId: string) {
 
 	await scheduleMonitorCheck(monitor.id, monitor.intervalSeconds);
 
-	return monitor;
+	return toPublicMonitor(monitor);
 }
 export async function getMonitorUptime(
 	userId: string,

@@ -8,6 +8,9 @@ export interface Monitor {
 	status: MonitorStatus;
 	enabled: boolean;
 	intervalSeconds: number;
+	timeoutMs: number;
+	failureThreshold: number;
+	recoveryThreshold: number;
 	lastCheckedAt: string | null;
 	nextCheckAt: string | null;
 	createdAt: string;
@@ -46,4 +49,28 @@ export interface UptimeData {
 	successfulChecks: number;
 	failedChecks: number;
 	uptimePercentage: number | null;
+}
+export interface PublicStatusMonitor {
+	id: string;
+	name: string;
+	url: string;
+	status: MonitorStatus;
+	lastCheckedAt: string | null;
+	uptimePercentage: number | null;
+	totalChecks: number;
+	incidents: {
+		id: string;
+		status: "OPEN" | "RESOLVED";
+		failureCount: number;
+		startedAt: string;
+		resolvedAt: string | null;
+	}[];
+}
+
+export interface PublicStatusPage {
+	id: string;
+	title: string;
+	slug: string;
+	createdAt: string;
+	monitors: PublicStatusMonitor[];
 }

@@ -62,6 +62,7 @@ model Monitor {
   recoveryThreshold Int           @default(2) @map("recovery_threshold")
   status            MonitorStatus @default(UNKNOWN)
   enabled           Boolean       @default(true)
+  checkGeneration   BigInt        @default(0) @map("check_generation")
   lastCheckedAt     DateTime?     @map("last_checked_at") @db.Timestamptz(3)
   nextCheckAt       DateTime?     @map("next_check_at") @db.Timestamptz(3)
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -134,7 +135,6 @@ model StatusPageMonitor {
   @@id([statusPageId, monitorId])
   @@map("status_page_monitors")
 }
-
 
 model Notification {
   id           String              @id @default(uuid()) @db.Uuid

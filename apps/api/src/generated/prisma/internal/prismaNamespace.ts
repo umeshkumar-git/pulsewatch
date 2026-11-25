@@ -1079,6 +1079,7 @@ export const MonitorScalarFieldEnum = {
   recoveryThreshold: 'recoveryThreshold',
   status: 'status',
   enabled: 'enabled',
+  checkGeneration: 'checkGeneration',
   lastCheckedAt: 'lastCheckedAt',
   nextCheckAt: 'nextCheckAt',
   createdAt: 'createdAt',
@@ -1268,6 +1269,20 @@ export type ListEnumMonitorStatusFieldRefInput<$PrismaModel> = FieldRefInputType
  * Reference to a field of type 'Boolean'
  */
 export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Boolean'>
+    
+
+
+/**
+ * Reference to a field of type 'BigInt'
+ */
+export type BigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt'>
+    
+
+
+/**
+ * Reference to a field of type 'BigInt[]'
+ */
+export type ListBigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt[]'>
     
 
 
