@@ -115,4 +115,73 @@ describe("evaluateMonitorState", () => {
                         }),
                 ).toThrow("At least one check result is required");
         });
+        it("marks an UP monitor DOWN with a failure threshold of 1", () => {
+                expect(
+                        evaluateMonitorState({
+                                currentStatus: "UP",
+                                failureThreshold: 1,
+                                recoveryThreshold: 2,
+                                recentResults: [false],
+                        }),
+                ).toEqual({
+                        nextStatus: "DOWN",
+                        consecutiveCount: 1,
+                });
+        });
+
+        it("recovers a DOWN monitor with a recovery threshold of 1", () => {
+                expect(
+                        evaluateMonitorState({
+                                currentStatus: "DOWN",
+                                failureThreshold: 3,
+                                recoveryThreshold: 1,
+                                recentResults: [true],
+                        }),
+                ).toEqual({
+                        nextStatus: "UP",
+                        consecutiveCount: 1,
+                });
+        });
+
+        it("supports the maximum failure threshold of 10", () => {
+                expect(
+                        evaluateMonitorState({
+                                currentStatus: "UP",
+                                failureThreshold: 10,
+                                recoveryThreshold: 2,
+                                recentResults: Array(10).fill(false),
+                        }),
+                ).toEqual({
+                        nextStatus: "DOWN",
+                        consecutiveCount: 10,
+                });
+        });
+
+        it("supports the maximum recovery threshold of 10", () => {
+                expect(
+                        evaluateMonitorState({
+                                currentStatus: "DOWN",
+                                failureThreshold: 3,
+                                recoveryThreshold: 10,
+                                recentResults: Array(10).fill(true),
+                        }),
+                ).toEqual({
+                        nextStatus: "UP",
+                        consecutiveCount: 10,
+                });
+        });
+
+        it("resets the consecutive count after alternating results", () => {
+                expect(
+                        evaluateMonitorState({
+                                currentStatus: "UP",
+                                failureThreshold: 3,
+                                recoveryThreshold: 2,
+                                recentResults: [false, true, false],
+                        }),
+                ).toEqual({
+                        nextStatus: "UP",
+                        consecutiveCount: 1,
+                });
+        });
 });

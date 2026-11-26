@@ -172,6 +172,42 @@ describe("processMonitorCheck", () => {
 		);
 	});
 
+	it("does not resolve an incident before the recovery threshold is reached", async () => {
+		txMock.monitor.findFirst.mockResolvedValue({
+			...monitor,
+			status: "DOWN",
+			recoveryThreshold: 2,
+		});
+
+		txMock.checkResult.findMany.mockResolvedValue([{ success: true }]);
+
+		txMock.incident.findFirst.mockResolvedValue({
+			id: "incident-123",
+			status: "OPEN",
+		});
+
+		await processMonitorCheck(
+			{ monitorId: monitor.id },
+			vi.fn().mockResolvedValue({
+				success: true,
+				statusCode: 200,
+				latencyMs: 100,
+				errorMessage: null,
+			}),
+		);
+
+		expect(txMock.monitor.update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					status: "DOWN",
+				}),
+			}),
+		);
+
+		expect(txMock.incident.update).not.toHaveBeenCalled();
+		expect(txMock.notification.create).not.toHaveBeenCalled();
+		expect(enqueueNotificationMock).not.toHaveBeenCalled();
+	});
 	it("resolves an incident when a DOWN monitor recovers", async () => {
 		const downMonitor = {
 			...monitor,
