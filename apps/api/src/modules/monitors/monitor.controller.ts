@@ -234,10 +234,10 @@ export async function getUptime(req: Request, res: Response) {
 		const hours =
 			req.query.hours === undefined ? 24 : Number(req.query.hours);
 
-		if (![24, 168, 720].includes(hours)) {
+		if (![1, 24, 168, 720].includes(hours)) {
 			return res.status(400).json({
 				success: false,
-				message: "Invalid hours. Allowed values: 24, 168, 720",
+				message: "Invalid hours. Allowed values: 1, 24, 168, 720",
 			});
 		}
 

@@ -23,6 +23,8 @@ function MonitorDetailsContent() {
 
 	const [monitor, setMonitor] = useState<MonitorDetails | null>(null);
 	const [uptime, setUptime] = useState<UptimeData | null>(null);
+	const [periodHours, setPeriodHours] = useState(24);
+	const [uptimeLoading, setUptimeLoading] = useState(false);
 	const [error, setError] = useState("");
 	const [loading, setLoading] = useState(true);
 
@@ -47,15 +49,13 @@ function MonitorDetailsContent() {
 
 		async function load() {
 			try {
-				const [detailData, uptimeData] = await Promise.all([
-					apiFetch<{ monitor: MonitorDetails }>(`/monitors/${id}`),
-					apiFetch<UptimeData>(`/monitors/${id}/uptime?hours=24`),
-				]);
+				const detailData = await apiFetch<{ monitor: MonitorDetails }>(
+					`/monitors/${id}`,
+				);
 
 				if (!active) return;
 
 				setMonitor(detailData.monitor);
-				setUptime(uptimeData);
 			} catch (err) {
 				if (!active) return;
 
@@ -80,6 +80,45 @@ function MonitorDetailsContent() {
 			active = false;
 		};
 	}, [id, router]);
+
+	useEffect(() => {
+		let active = true;
+
+		async function loadUptime() {
+			setUptimeLoading(true);
+
+			try {
+				const uptimeData = await apiFetch<UptimeData>(
+					`/monitors/${id}/uptime?hours=${periodHours}`,
+				);
+
+				if (active) {
+					setUptime(uptimeData);
+				}
+			} catch (err) {
+				if (!active) return;
+
+				if (err instanceof ApiError && err.status === 401) {
+					router.replace("/login");
+					return;
+				}
+
+				setError(
+					err instanceof Error
+						? err.message
+						: "Unable to load uptime analytics.",
+				);
+			} finally {
+				if (active) setUptimeLoading(false);
+			}
+		}
+
+		loadUptime();
+
+		return () => {
+			active = false;
+		};
+	}, [id, periodHours, router]);
 	function handleEdit() {
 		if (!monitor) return;
 
@@ -482,26 +521,110 @@ function MonitorDetailsContent() {
 					</div>
 				)}
 
-				<section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-					{[
-						[
-							"24-hour uptime",
-							uptime?.uptimePercentage == null
-								? "—"
-								: `${uptime.uptimePercentage.toFixed(2)}%`,
-						],
-						["Total checks", uptime?.totalChecks ?? "—"],
-						["Successful checks", uptime?.successfulChecks ?? "—"],
-						["Failed checks", uptime?.failedChecks ?? "—"],
-					].map(([label, value]) => (
-						<div
-							key={label}
-							className="rounded-xl border border-slate-800 bg-slate-900 p-5"
-						>
-							<p className="text-sm text-slate-400">{label}</p>
-							<p className="mt-3 text-2xl font-bold">{value}</p>
+				<section className="mt-8 rounded-xl border border-slate-800 bg-slate-900 p-5">
+					<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+						<div>
+							<h2 className="text-lg font-semibold">
+								Uptime & Latency Analytics
+							</h2>
+							<p className="mt-1 text-sm text-slate-400">
+								Availability and response-time statistics for
+								the selected period.
+							</p>
 						</div>
-					))}
+
+						<select
+							value={periodHours}
+							onChange={(event) =>
+								setPeriodHours(Number(event.target.value))
+							}
+							className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+						>
+							<option value={1}>Last 1 hour</option>
+							<option value={24}>Last 24 hours</option>
+							<option value={168}>Last 7 days</option>
+							<option value={720}>Last 30 days</option>
+						</select>
+					</div>
+
+					{uptimeLoading && (
+						<p className="mt-4 text-sm text-slate-400">
+							Loading analytics...
+						</p>
+					)}
+
+					<div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+						{[
+							[
+								`${periodHours === 1 ? "1-hour" : periodHours === 24 ? "24-hour" : periodHours === 168 ? "7-day" : "30-day"} uptime`,
+								uptime?.uptimePercentage == null
+									? "—"
+									: `${uptime.uptimePercentage.toFixed(2)}%`,
+							],
+							["Total checks", uptime?.totalChecks ?? "—"],
+							[
+								"Successful checks",
+								uptime?.successfulChecks ?? "—",
+							],
+							["Failed checks", uptime?.failedChecks ?? "—"],
+						].map(([label, value]) => (
+							<div
+								key={label}
+								className="rounded-xl border border-slate-800 bg-slate-950 p-4"
+							>
+								<p className="text-sm text-slate-400">
+									{label}
+								</p>
+								<p className="mt-3 text-2xl font-bold">
+									{value}
+								</p>
+							</div>
+						))}
+					</div>
+
+					<div className="mt-6">
+						<h3 className="mb-4 font-semibold">
+							Latency statistics
+						</h3>
+
+						<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+							{[
+								["Average", uptime?.latency.averageMs],
+								["Minimum", uptime?.latency.minMs],
+								["Maximum", uptime?.latency.maxMs],
+								["P50", uptime?.latency.p50Ms],
+								["P95", uptime?.latency.p95Ms],
+								["P99", uptime?.latency.p99Ms],
+								[
+									"Latency samples",
+									uptime?.latency.sampleCount,
+								],
+							].map(([label, value]) => (
+								<div
+									key={label}
+									className="rounded-xl border border-slate-800 bg-slate-950 p-4"
+								>
+									<p className="text-sm text-slate-400">
+										{label}
+									</p>
+									<p className="mt-3 text-xl font-bold">
+										{value == null
+											? "—"
+											: label === "Latency samples"
+												? value
+												: `${value} ms`}
+									</p>
+								</div>
+							))}
+						</div>
+					</div>
+
+					{uptime?.calculatedAt && (
+						<p className="mt-5 text-xs text-slate-500">
+							Calculated at:{" "}
+							{new Date(uptime.calculatedAt).toLocaleString()}
+						</p>
+					)}
 				</section>
 
 				<section className="mt-8 rounded-xl border border-slate-800 bg-slate-900 p-5">

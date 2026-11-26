@@ -42,6 +42,16 @@ export interface Incident {
 	};
 }
 
+export interface LatencyStatistics {
+	sampleCount: number;
+	averageMs: number | null;
+	minMs: number | null;
+	maxMs: number | null;
+	p50Ms: number | null;
+	p95Ms: number | null;
+	p99Ms: number | null;
+}
+
 export interface UptimeData {
 	monitor: Monitor;
 	periodHours: number;
@@ -49,6 +59,8 @@ export interface UptimeData {
 	successfulChecks: number;
 	failedChecks: number;
 	uptimePercentage: number | null;
+	latency: LatencyStatistics;
+	calculatedAt: string;
 }
 export interface PublicStatusMonitor {
 	id: string;

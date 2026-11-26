@@ -2,6 +2,7 @@ import {
 	scheduleMonitorCheck,
 	unscheduleMonitorCheck,
 } from "../../queues/monitor.queue";
+import { calculateLatencyStatistics } from "./monitor-analytics";
 
 import { prisma } from "../../config/database";
 
@@ -279,29 +280,75 @@ export async function getMonitorUptime(
 		throw new MonitorError("MONITOR_NOT_FOUND", 404);
 	}
 
-	const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+	const calculatedAt = new Date();
+	const since = new Date(calculatedAt.getTime() - hours * 60 * 60 * 1000);
 
-	const [totalChecks, successfulChecks] = await Promise.all([
-		prisma.checkResult.count({
-			where: {
-				monitorId,
-				checkedAt: { gte: since },
-			},
-		}),
+	const checkWhere = {
+		monitorId,
+		checkedAt: {
+			gte: since,
+			lte: calculatedAt,
+		},
+	};
 
-		prisma.checkResult.count({
-			where: {
-				monitorId,
-				checkedAt: { gte: since },
-				success: true,
-			},
-		}),
-	]);
+	const latencyWhere = {
+		...checkWhere,
+		success: true,
+		latencyMs: {
+			not: null,
+		},
+	};
+
+	const [totalChecks, successfulChecks, latencyAggregate, latencyResults] =
+		await Promise.all([
+			prisma.checkResult.count({
+				where: checkWhere,
+			}),
+
+			prisma.checkResult.count({
+				where: {
+					...checkWhere,
+					success: true,
+				},
+			}),
+
+			prisma.checkResult.aggregate({
+				where: latencyWhere,
+				_avg: {
+					latencyMs: true,
+				},
+				_min: {
+					latencyMs: true,
+				},
+				_max: {
+					latencyMs: true,
+				},
+				_count: {
+					latencyMs: true,
+				},
+			}),
+
+			prisma.checkResult.findMany({
+				where: latencyWhere,
+				select: {
+					latencyMs: true,
+				},
+				orderBy: {
+					latencyMs: "asc",
+				},
+			}),
+		]);
 
 	const uptimePercentage =
 		totalChecks === 0
 			? null
 			: Number(((successfulChecks / totalChecks) * 100).toFixed(2));
+
+	const latencyStatistics = calculateLatencyStatistics(
+		latencyResults
+			.map((result) => result.latencyMs)
+			.filter((value): value is number => value !== null),
+	);
 
 	return {
 		monitor,
@@ -310,6 +357,13 @@ export async function getMonitorUptime(
 		successfulChecks,
 		failedChecks: totalChecks - successfulChecks,
 		uptimePercentage,
-		calculatedAt: new Date(),
+		latency: {
+			...latencyStatistics,
+			averageMs: latencyAggregate._avg?.latencyMs ?? null,
+			minMs: latencyAggregate._min?.latencyMs ?? null,
+			maxMs: latencyAggregate._max?.latencyMs ?? null,
+			sampleCount: latencyAggregate._count.latencyMs,
+		},
+		calculatedAt,
 	};
 }

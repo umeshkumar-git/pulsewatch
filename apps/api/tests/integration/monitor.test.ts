@@ -1,18 +1,27 @@
-import { describe, it, expect } from "vitest";
 import request from "supertest";
-
+import { afterEach, describe, it, expect } from "vitest";
 import app from "../../src/app";
-
+import { prisma } from "../../src/config/database";
+const createdUserIds: string[] = [];
 async function createTestUser() {
 	const agent = request.agent(app);
+	const email = `monitor-${crypto.randomUUID()}@example.com`;
 
 	const response = await agent.post("/api/v1/auth/register").send({
 		name: "Monitor Test User",
-		email: `monitor-${crypto.randomUUID()}@example.com`,
+		email,
 		password: "TestPassword123!",
 	});
 
 	expect(response.status).toBe(201);
+
+	const user = await prisma.user.findUnique({
+		where: { email },
+		select: { id: true },
+	});
+
+	expect(user).not.toBeNull();
+	createdUserIds.push(user!.id);
 
 	return {
 		agent,
@@ -109,6 +118,56 @@ describe("Monitor API integration tests", () => {
 		expect(response.body.data.totalChecks).toBe(0);
 		expect(response.body.data.uptimePercentage).toBeNull();
 	});
+	it("calculates uptime and latency statistics correctly", async () => {
+		const { agent, accessToken } = await createTestUser();
+
+		const created = await agent
+			.post("/api/v1/monitors")
+			.set("Authorization", `Bearer ${accessToken}`)
+			.send({
+				name: "Analytics Monitor",
+				url: "https://example.com",
+			});
+
+		expect(created.status).toBe(201);
+
+		const monitorId = created.body.data.monitor.id;
+		const checkedAt = new Date();
+
+		await prisma.checkResult.createMany({
+			data: [
+				{ monitorId, success: true, latencyMs: 10, checkedAt },
+				{ monitorId, success: true, latencyMs: 20, checkedAt },
+				{ monitorId, success: true, latencyMs: 30, checkedAt },
+				{ monitorId, success: true, latencyMs: 40, checkedAt },
+				{ monitorId, success: true, latencyMs: 50, checkedAt },
+				{ monitorId, success: false, latencyMs: 999, checkedAt },
+			],
+		});
+
+		const response = await agent
+			.get(`/api/v1/monitors/${monitorId}/uptime?hours=24`)
+			.set("Authorization", `Bearer ${accessToken}`);
+
+		expect(response.status).toBe(200);
+
+		const data = response.body.data;
+
+		expect(data.totalChecks).toBe(6);
+		expect(data.successfulChecks).toBe(5);
+		expect(data.failedChecks).toBe(1);
+		expect(data.uptimePercentage).toBe(83.33);
+
+		expect(data.latency).toEqual({
+			sampleCount: 5,
+			averageMs: 30,
+			minMs: 10,
+			maxMs: 50,
+			p50Ms: 30,
+			p95Ms: 50,
+			p99Ms: 50,
+		});
+	});
 
 	it("rejects unsupported uptime periods", async () => {
 		const { agent, accessToken } = await createTestUser();
@@ -119,7 +178,7 @@ describe("Monitor API integration tests", () => {
 
 		expect(response.status).toBe(400);
 		expect(response.body.message).toBe(
-			"Invalid hours. Allowed values: 24, 168, 720",
+			"Invalid hours. Allowed values: 1, 24, 168, 720",
 		);
 	});
 
