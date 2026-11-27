@@ -63,7 +63,7 @@ export async function processNotification(data: NotificationJobData) {
 		html: email.html,
 	});
 
-	if (result.accepted.length === 0 || result.rejected.length > 0) {
+	if (!result.accepted?.length || (result.rejected?.length ?? 0) > 0) {
 		throw new Error("EMAIL_DELIVERY_REJECTED");
 	}
 

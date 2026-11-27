@@ -10,28 +10,53 @@ import {
 } from "../queues/notification.queue";
 
 import { processNotification } from "./notification.processor";
-import { verifyEmailConnection } from "../services/email.service";
+import {
+	closeEmailTransport,
+	verifyEmailConnection,
+} from "../services/email.service";
+import { handleNotificationFailure } from "./notification-failure.handler";
 
 async function enqueuePendingNotifications() {
-	const pendingNotifications = await prisma.notification.findMany({
-		where: {
-			status: "PENDING",
-		},
-		select: {
-			id: true,
-		},
-		take: 500,
-		orderBy: {
-			createdAt: "asc",
-		},
-	});
+	const batchSize = 500;
+	let cursor: string | undefined;
+	let totalRecovered = 0;
 
-	for (const notification of pendingNotifications) {
-		await enqueueNotification(notification.id);
+	while (true) {
+		const pendingNotifications = await prisma.notification.findMany({
+			where: {
+				status: "PENDING",
+			},
+			select: {
+				id: true,
+			},
+			take: batchSize,
+			...(cursor
+				? {
+						cursor: { id: cursor },
+						skip: 1,
+					}
+				: {}),
+			orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+		});
+
+		if (pendingNotifications.length === 0) {
+			break;
+		}
+
+		for (const notification of pendingNotifications) {
+			await enqueueNotification(notification.id);
+		}
+
+		totalRecovered += pendingNotifications.length;
+		cursor = pendingNotifications[pendingNotifications.length - 1].id;
+
+		if (pendingNotifications.length < batchSize) {
+			break;
+		}
 	}
 
 	console.log(
-		`[Email Worker] Recovered ${pendingNotifications.length} pending notifications`,
+		`[Email Worker] Recovered ${totalRecovered} pending notifications`,
 	);
 }
 
@@ -50,34 +75,18 @@ async function main() {
 
 	const worker = new Worker<NotificationJobData>(
 		"email-notifications",
-
 		async (job) => {
 			try {
 				await processNotification(job.data);
 			} catch (error) {
-				const attempts = job.opts.attempts ?? 1;
-				const willRetry = job.attemptsMade + 1 < attempts;
-
-				await prisma.notification.updateMany({
-					where: {
-						id: job.data.notificationId,
-						status: {
-							not: "SENT",
-						},
-					},
-					data: {
-						status: willRetry ? "PENDING" : "FAILED",
-						errorMessage:
-							error instanceof Error
-								? error.message.slice(0, 500)
-								: "Email delivery failed",
-					},
-				});
-
-				throw error;
+				await handleNotificationFailure(
+					job.data.notificationId,
+					error,
+					job.attemptsMade,
+					job.opts.attempts ?? 1,
+				);
 			}
 		},
-
 		{
 			connection: redisConnection,
 			concurrency: 5,
@@ -106,6 +115,7 @@ async function main() {
 		try {
 			await worker.close();
 			await notificationQueue.close();
+			closeEmailTransport();
 			await prisma.$disconnect();
 
 			process.exit(0);
@@ -123,6 +133,7 @@ main().catch(async (error) => {
 	console.error("[Email Worker] Startup failed:", error);
 
 	await notificationQueue.close();
+	closeEmailTransport();
 	await prisma.$disconnect();
 
 	process.exit(1);
