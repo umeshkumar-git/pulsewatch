@@ -11,6 +11,7 @@ import {
 	pause,
 	resume,
 	getUptime,
+	getDashboard,
 } from "./monitor.controller";
 
 const router = Router();
@@ -20,6 +21,7 @@ router.use(requireAuth);
 
 router.post("/", create);
 router.get("/", getAll);
+router.get("/dashboard", getDashboard);
 
 // Keep uptime route before the generic ID route.
 router.get("/:id/uptime", getUptime);

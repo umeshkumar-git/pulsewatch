@@ -86,3 +86,25 @@ export interface PublicStatusPage {
 	createdAt: string;
 	monitors: PublicStatusMonitor[];
 }
+
+export interface DashboardSummary {
+	totalMonitors: number;
+	upMonitors: number;
+	downMonitors: number;
+	pausedMonitors: number;
+	unknownMonitors: number;
+	activeIncidents: number;
+	totalChecks: number;
+	successfulChecks: number;
+	failedChecks: number;
+	uptimePercentage: number | null;
+	latency: LatencyStatistics;
+}
+
+export interface DashboardMonitor extends Monitor {
+	uptimePercentage: number | null;
+}
+
+export interface DashboardCheck extends CheckResult {
+	monitorId: string;
+}

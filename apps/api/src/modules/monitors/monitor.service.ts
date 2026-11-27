@@ -117,7 +117,11 @@ export async function getMonitor(userId: string, monitorId: string) {
 		throw new MonitorError("MONITOR_NOT_FOUND", 404);
 	}
 
-	return monitor;
+	return {
+		...toPublicMonitor(monitor),
+		checkResults: monitor.checkResults,
+		incidents: monitor.incidents,
+	};
 }
 
 // UPDATE MONITOR
@@ -363,6 +367,233 @@ export async function getMonitorUptime(
 			minMs: latencyAggregate._min?.latencyMs ?? null,
 			maxMs: latencyAggregate._max?.latencyMs ?? null,
 			sampleCount: latencyAggregate._count.latencyMs,
+		},
+		calculatedAt,
+	};
+}
+
+export async function getMonitorDashboard(
+	userId: string,
+	page = 1,
+	limit = 50,
+) {
+	const calculatedAt = new Date();
+	const since = new Date(calculatedAt.getTime() - 24 * 60 * 60 * 1000);
+
+	const monitorWhere = { userId };
+	const checkWhere = {
+		monitor: { userId },
+		checkedAt: {
+			gte: since,
+			lte: calculatedAt,
+		},
+	};
+
+	const [
+		monitors,
+		totalMonitors,
+		monitorStatusCounts,
+		checkCounts,
+		latencyAggregate,
+		latencyResults,
+		openIncidentCount,
+		incidents,
+		recentChecks,
+		monitorUptimeGroups,
+	] = await Promise.all([
+		prisma.monitor.findMany({
+			where: monitorWhere,
+			orderBy: { createdAt: "desc" },
+			skip: (page - 1) * limit,
+			take: limit,
+			include: {
+				_count: {
+					select: {
+						checkResults: true,
+						incidents: true,
+					},
+				},
+			},
+		}),
+
+		prisma.monitor.count({ where: monitorWhere }),
+
+		prisma.monitor.groupBy({
+			by: ["status"],
+			where: monitorWhere,
+			_count: { _all: true },
+		}),
+
+		prisma.checkResult.groupBy({
+			by: ["success"],
+			where: checkWhere,
+			_count: { _all: true },
+		}),
+
+		prisma.checkResult.aggregate({
+			where: {
+				...checkWhere,
+				success: true,
+				latencyMs: { not: null },
+			},
+			_avg: { latencyMs: true },
+			_min: { latencyMs: true },
+			_max: { latencyMs: true },
+			_count: { latencyMs: true },
+		}),
+
+		prisma.checkResult.findMany({
+			where: {
+				...checkWhere,
+				success: true,
+				latencyMs: { not: null },
+			},
+			select: { latencyMs: true },
+			orderBy: { checkedAt: "desc" },
+			take: 1000,
+		}),
+
+		prisma.incident.count({
+			where: {
+				status: "OPEN",
+				monitor: { userId },
+			},
+		}),
+
+		prisma.incident.findMany({
+			where: {
+				status: "OPEN",
+				monitor: { userId },
+			},
+			orderBy: { startedAt: "desc" },
+			take: 5,
+			include: {
+				monitor: {
+					select: {
+						id: true,
+						name: true,
+						url: true,
+					},
+				},
+			},
+		}),
+
+		prisma.checkResult.findMany({
+			where: checkWhere,
+			orderBy: { checkedAt: "desc" },
+			take: 100,
+			select: {
+				id: true,
+				monitorId: true,
+				latencyMs: true,
+				success: true,
+				statusCode: true,
+				checkedAt: true,
+				errorMessage: true,
+			},
+		}),
+
+		prisma.checkResult.groupBy({
+			by: ["monitorId", "success"],
+			where: checkWhere,
+			_count: { _all: true },
+		}),
+	]);
+
+	const statusCounts = {
+		UP: 0,
+		DOWN: 0,
+		PAUSED: 0,
+		UNKNOWN: 0,
+	};
+
+	for (const item of monitorStatusCounts) {
+		statusCounts[item.status] = item._count._all;
+	}
+
+	const totalChecks = checkCounts.reduce(
+		(total, item) => total + item._count._all,
+		0,
+	);
+
+	const successfulChecks =
+		checkCounts.find((item) => item.success)?._count._all ?? 0;
+
+	const uptimePercentage =
+		totalChecks === 0
+			? null
+			: Number(((successfulChecks / totalChecks) * 100).toFixed(2));
+
+	const latency = calculateLatencyStatistics(
+		latencyResults
+			.map((result) => result.latencyMs)
+			.filter((value): value is number => value !== null),
+	);
+
+	const monitorUptime = new Map<
+		string,
+		{ total: number; successful: number }
+	>();
+
+	for (const item of monitorUptimeGroups) {
+		const current = monitorUptime.get(item.monitorId) ?? {
+			total: 0,
+			successful: 0,
+		};
+
+		current.total += item._count._all;
+
+		if (item.success) {
+			current.successful += item._count._all;
+		}
+
+		monitorUptime.set(item.monitorId, current);
+	}
+
+	const monitorsWithUptime = monitors.map((monitor) => {
+		const counts = monitorUptime.get(monitor.id);
+		const percentage =
+			counts && counts.total > 0
+				? Number(((counts.successful / counts.total) * 100).toFixed(2))
+				: null;
+
+		return {
+			...toPublicMonitor(monitor),
+			uptimePercentage: percentage,
+		};
+	});
+
+	return {
+		summary: {
+			totalMonitors,
+			upMonitors: statusCounts.UP,
+			downMonitors: statusCounts.DOWN,
+			pausedMonitors: statusCounts.PAUSED,
+			unknownMonitors: statusCounts.UNKNOWN,
+			activeIncidents: openIncidentCount,
+			totalChecks,
+			successfulChecks,
+			failedChecks: totalChecks - successfulChecks,
+			uptimePercentage,
+			latency: {
+				...latency,
+				averageMs: latencyAggregate._avg.latencyMs,
+				minMs: latencyAggregate._min.latencyMs,
+				maxMs: latencyAggregate._max.latencyMs,
+				sampleCount: latencyAggregate._count.latencyMs,
+			},
+		},
+		monitors: monitorsWithUptime,
+		incidents: incidents.map((incident) => ({
+			...incident,
+			durationMs: calculatedAt.getTime() - incident.startedAt.getTime(),
+		})),
+		recentChecks,
+		pagination: {
+			page,
+			limit,
+			total: totalMonitors,
+			totalPages: Math.ceil(totalMonitors / limit),
 		},
 		calculatedAt,
 	};

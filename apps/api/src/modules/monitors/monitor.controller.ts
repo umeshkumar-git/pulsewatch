@@ -9,6 +9,7 @@ import {
 	pauseMonitor,
 	resumeMonitor,
 	getMonitorUptime,
+	getMonitorDashboard,
 	MonitorError,
 } from "./monitor.service";
 
@@ -246,6 +247,36 @@ export async function getUptime(req: Request, res: Response) {
 			parsedId.data,
 			hours,
 		);
+
+		return res.status(200).json({
+			success: true,
+			data: result,
+		});
+	} catch (error) {
+		return handleError(error, res);
+	}
+}
+
+// GET DASHBOARD SUMMARY
+export async function getDashboard(req: Request, res: Response) {
+	try {
+		const page = Number(req.query.page ?? 1);
+		const limit = Number(req.query.limit ?? 50);
+
+		if (
+			!Number.isInteger(page) ||
+			!Number.isInteger(limit) ||
+			page < 1 ||
+			limit < 1 ||
+			limit > 100
+		) {
+			return res.status(400).json({
+				success: false,
+				message: "Invalid pagination parameters",
+			});
+		}
+
+		const result = await getMonitorDashboard(getUserId(req), page, limit);
 
 		return res.status(200).json({
 			success: true,

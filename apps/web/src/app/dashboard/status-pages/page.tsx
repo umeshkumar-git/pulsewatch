@@ -51,37 +51,81 @@ export default function StatusPagesManagement() {
 	const [editTitle, setEditTitle] = useState("");
 	const [editMonitorIds, setEditMonitorIds] = useState<string[]>([]);
 
-	const loadData = useCallback(async () => {
-		try {
-			setLoading(true);
-			setError("");
+	const loadData = useCallback(
+		async (showLoading = true) => {
+			try {
+				if (showLoading) {
+					setLoading(true);
+					setError("");
+				}
 
-			const [pageData, monitorData] = await Promise.all([
-				apiFetch<StatusPageListResponse>("/status-pages"),
-				apiFetch<MonitorListResponse>("/monitors?page=1&limit=100"),
-			]);
+				const [pageData, monitorData] = await Promise.all([
+					apiFetch<StatusPageListResponse>("/status-pages"),
+					apiFetch<MonitorListResponse>("/monitors?page=1&limit=100"),
+				]);
 
-			setPages(pageData.pages);
-			setMonitors(monitorData.monitors);
-		} catch (err) {
-			if (err instanceof ApiError && err.status === 401) {
-				router.replace("/login");
-				return;
+				setPages(pageData.pages);
+				setMonitors(monitorData.monitors);
+			} catch (err) {
+				if (err instanceof ApiError && err.status === 401) {
+					router.replace("/login");
+					return;
+				}
+
+				setError(
+					err instanceof Error
+						? err.message
+						: "Unable to load status pages.",
+				);
+			} finally {
+				if (showLoading) {
+					setLoading(false);
+				}
 			}
-
-			setError(
-				err instanceof Error
-					? err.message
-					: "Unable to load status pages.",
-			);
-		} finally {
-			setLoading(false);
-		}
-	}, [router]);
+		},
+		[router],
+	);
 
 	useEffect(() => {
-		void loadData();
-	}, [loadData]);
+		let active = true;
+
+		async function fetchInitialData() {
+			try {
+				const [pageData, monitorData] = await Promise.all([
+					apiFetch<StatusPageListResponse>("/status-pages"),
+					apiFetch<MonitorListResponse>("/monitors?page=1&limit=100"),
+				]);
+
+				if (!active) return;
+
+				setPages(pageData.pages);
+				setMonitors(monitorData.monitors);
+			} catch (err) {
+				if (!active) return;
+
+				if (err instanceof ApiError && err.status === 401) {
+					router.replace("/login");
+					return;
+				}
+
+				setError(
+					err instanceof Error
+						? err.message
+						: "Unable to load status pages.",
+				);
+			} finally {
+				if (active) {
+					setLoading(false);
+				}
+			}
+		}
+
+		void fetchInitialData();
+
+		return () => {
+			active = false;
+		};
+	}, [router]);
 
 	function toggleSelection(
 		id: string,

@@ -296,4 +296,127 @@ describe("Monitor API integration tests", () => {
 		expect(response.status).toBe(404);
 		expect(response.body.success).toBe(false);
 	});
+
+	it("rejects dashboard requests without authentication", async () => {
+		const response = await request(app).get("/api/v1/monitors/dashboard");
+
+		expect(response.status).toBe(401);
+		expect(response.body.success).toBe(false);
+	});
+
+	it("returns an empty dashboard for a user without monitors", async () => {
+		const { agent, accessToken } = await createTestUser();
+
+		const response = await agent
+			.get("/api/v1/monitors/dashboard")
+			.set("Authorization", `Bearer ${accessToken}`);
+
+		expect(response.status).toBe(200);
+		expect(response.body.success).toBe(true);
+
+		const { summary, monitors, incidents, recentChecks } =
+			response.body.data;
+
+		expect(summary.totalMonitors).toBe(0);
+		expect(summary.upMonitors).toBe(0);
+		expect(summary.downMonitors).toBe(0);
+		expect(summary.pausedMonitors).toBe(0);
+		expect(summary.unknownMonitors).toBe(0);
+		expect(summary.activeIncidents).toBe(0);
+		expect(summary.totalChecks).toBe(0);
+		expect(summary.uptimePercentage).toBeNull();
+		expect(monitors).toHaveLength(0);
+		expect(incidents).toHaveLength(0);
+		expect(recentChecks).toHaveLength(0);
+	});
+
+	it("returns accurate monitor counts and 24-hour analytics", async () => {
+		const { agent, accessToken } = await createTestUser();
+
+		const created = await agent
+			.post("/api/v1/monitors")
+			.set("Authorization", `Bearer ${accessToken}`)
+			.send({
+				name: "Dashboard Analytics Monitor",
+				url: "https://example.com",
+			});
+
+		expect(created.status).toBe(201);
+
+		const monitorId = created.body.data.monitor.id;
+		const checkedAt = new Date();
+
+		await prisma.checkResult.createMany({
+			data: [
+				{ monitorId, success: true, latencyMs: 10, checkedAt },
+				{ monitorId, success: true, latencyMs: 20, checkedAt },
+				{ monitorId, success: true, latencyMs: 30, checkedAt },
+				{ monitorId, success: false, latencyMs: 999, checkedAt },
+			],
+		});
+
+		const response = await agent
+			.get("/api/v1/monitors/dashboard")
+			.set("Authorization", `Bearer ${accessToken}`);
+
+		expect(response.status).toBe(200);
+
+		const { summary, monitors, recentChecks } = response.body.data;
+
+		expect(summary.totalMonitors).toBe(1);
+		expect(summary.unknownMonitors).toBe(1);
+		expect(summary.totalChecks).toBe(4);
+		expect(summary.successfulChecks).toBe(3);
+		expect(summary.failedChecks).toBe(1);
+		expect(summary.uptimePercentage).toBe(75);
+
+		expect(summary.latency.sampleCount).toBe(3);
+		expect(summary.latency.averageMs).toBe(20);
+		expect(summary.latency.minMs).toBe(10);
+		expect(summary.latency.maxMs).toBe(30);
+		expect(summary.latency.p50Ms).toBe(20);
+		expect(summary.latency.p95Ms).toBe(30);
+		expect(summary.latency.p99Ms).toBe(30);
+
+		expect(monitors).toHaveLength(1);
+		expect(monitors[0].id).toBe(monitorId);
+		expect(monitors[0].uptimePercentage).toBe(75);
+		expect(recentChecks).toHaveLength(4);
+	});
+
+	it("isolates dashboard statistics and check history between users", async () => {
+		const userOne = await createTestUser();
+		const userTwo = await createTestUser();
+
+		const created = await userOne.agent
+			.post("/api/v1/monitors")
+			.set("Authorization", `Bearer ${userOne.accessToken}`)
+			.send({
+				name: "Private Dashboard Monitor",
+				url: "https://example.com",
+			});
+
+		expect(created.status).toBe(201);
+
+		const monitorId = created.body.data.monitor.id;
+
+		await prisma.checkResult.create({
+			data: {
+				monitorId,
+				success: true,
+				latencyMs: 25,
+				checkedAt: new Date(),
+			},
+		});
+
+		const response = await userTwo.agent
+			.get("/api/v1/monitors/dashboard")
+			.set("Authorization", `Bearer ${userTwo.accessToken}`);
+
+		expect(response.status).toBe(200);
+		expect(response.body.data.summary.totalMonitors).toBe(0);
+		expect(response.body.data.summary.totalChecks).toBe(0);
+		expect(response.body.data.monitors).toHaveLength(0);
+		expect(response.body.data.recentChecks).toHaveLength(0);
+	});
 });
