@@ -30,8 +30,10 @@ enum NotificationChannel {
 
 enum NotificationStatus {
   PENDING
+  SENDING
   SENT
   FAILED
+  DELIVERY_UNKNOWN
 }
 
 model User {
@@ -145,6 +147,8 @@ model Notification {
   status       NotificationStatus  @default(PENDING)
   errorMessage String?             @map("error_message") @db.Text
   sentAt       DateTime?           @map("sent_at") @db.Timestamptz(3)
+  attemptStartedAt  DateTime? @map("attempt_started_at") @db.Timestamptz(3)
+providerMessageId String?   @map("provider_message_id")
   createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
 
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)

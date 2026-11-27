@@ -15,6 +15,27 @@ import {
 	verifyEmailConnection,
 } from "../services/email.service";
 import { handleNotificationFailure } from "./notification-failure.handler";
+async function recoverStaleSendingNotifications() {
+        const staleBefore = new Date(Date.now() - 2 * 60 * 1000);
+
+        const result = await prisma.notification.updateMany({
+                where: {
+                        status: "SENDING",
+                        attemptStartedAt: {
+                                lt: staleBefore,
+                        },
+                },
+                data: {
+                        status: "DELIVERY_UNKNOWN",
+                        errorMessage:
+                                "Worker stopped or timed out during SMTP delivery. Manual reconciliation required.",
+                },
+        });
+
+        console.log(
+                `[Email Worker] Marked ${result.count} stale SENDING notifications as DELIVERY_UNKNOWN`,
+        );
+}
 
 async function enqueuePendingNotifications() {
 	const batchSize = 500;
@@ -71,7 +92,8 @@ async function main() {
 		);
 	}
 
-	await enqueuePendingNotifications();
+	await recoverStaleSendingNotifications();
+await enqueuePendingNotifications();
 
 	const worker = new Worker<NotificationJobData>(
 		"email-notifications",

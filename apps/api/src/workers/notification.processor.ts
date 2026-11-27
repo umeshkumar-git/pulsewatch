@@ -1,85 +1,104 @@
 import { prisma } from "../config/database";
-
 import { sendEmail } from "../services/email.service";
-
 import {
-	incidentOpenedTemplate,
-	incidentResolvedTemplate,
+        incidentOpenedTemplate,
+        incidentResolvedTemplate,
 } from "../templates/incident-email.template";
-
 import type { NotificationJobData } from "../queues/notification.queue";
 
 export async function processNotification(data: NotificationJobData) {
-	const notification = await prisma.notification.findUnique({
-		where: {
-			id: data.notificationId,
-		},
+        const notification = await prisma.notification.findUnique({
+                where: { id: data.notificationId },
+                include: {
+                        incident: {
+                                include: {
+                                        monitor: {
+                                                include: { user: true },
+                                        },
+                                },
+                        },
+                },
+        });
 
-		include: {
-			incident: {
-				include: {
-					monitor: {
-						include: {
-							user: true,
-						},
-					},
-				},
-			},
-		},
-	});
+        if (!notification) {
+                throw new Error("NOTIFICATION_NOT_FOUND");
+        }
 
-	if (!notification) {
-		throw new Error("NOTIFICATION_NOT_FOUND");
-	}
+        if (notification.status !== "PENDING") {
+                return;
+        }
 
-	// A completed email must never be sent again.
-	if (notification.status === "SENT") {
-		return;
-	}
+        const incident = notification.incident;
+        const monitor = incident.monitor;
 
-	const incident = notification.incident;
-	const monitor = incident.monitor;
+        const templateInput = {
+                monitorName: monitor.name,
+                monitorUrl: monitor.url,
+                incidentId: incident.id,
+                startedAt: incident.startedAt,
+                resolvedAt: incident.resolvedAt,
+                durationMs:
+                        (incident.resolvedAt ?? new Date()).getTime() -
+                        incident.startedAt.getTime(),
+        };
 
-	const templateInput = {
-		monitorName: monitor.name,
-		monitorUrl: monitor.url,
-		incidentId: incident.id,
-		startedAt: incident.startedAt,
-		resolvedAt: incident.resolvedAt,
-		durationMs:
-			(incident.resolvedAt ?? new Date()).getTime() -
-			incident.startedAt.getTime(),
-	};
+        const email =
+                notification.eventType === "INCIDENT_OPENED"
+                        ? incidentOpenedTemplate(templateInput)
+                        : incidentResolvedTemplate(templateInput);
 
-	const email =
-		notification.eventType === "INCIDENT_OPENED"
-			? incidentOpenedTemplate(templateInput)
-			: incidentResolvedTemplate(templateInput);
+        // Atomically claim the notification before contacting SMTP.
+        const claim = await prisma.notification.updateMany({
+                where: {
+                        id: notification.id,
+                        status: "PENDING",
+                },
+                data: {
+                        status: "SENDING",
+                        attemptStartedAt: new Date(),
+                        errorMessage: null,
+                },
+        });
 
-	const result = await sendEmail({
-		to: notification.recipient,
-		subject: email.subject,
-		text: email.text,
-		html: email.html,
-	});
+        if (claim.count !== 1) {
+                return;
+        }
 
-	if (!result.accepted?.length || (result.rejected?.length ?? 0) > 0) {
-		throw new Error("EMAIL_DELIVERY_REJECTED");
-	}
+        const result = await sendEmail({
+                to: notification.recipient,
+                subject: email.subject,
+                text: email.text,
+                html: email.html,
+        });
 
-	await prisma.notification.update({
-		where: {
-			id: notification.id,
-		},
+        if (
+                !result.accepted?.length ||
+                (result.rejected?.length ?? 0) > 0
+        ) {
+                throw new Error("EMAIL_DELIVERY_REJECTED");
+        }
 
-		data: {
-			status: "SENT",
-			sentAt: new Date(),
-			errorMessage: null,
-		},
-	});
+        const completed = await prisma.notification.updateMany({
+                where: {
+                        id: notification.id,
+                        status: "SENDING",
+                },
+                data: {
+                        status: "SENT",
+                        sentAt: new Date(),
+                        providerMessageId: result.messageId ?? null,
+                        errorMessage: null,
+                },
+        });
 
-	console.log(
-		`[Email] Sent ${notification.eventType} notification ${notification.id}`,
-	);
+        if (completed.count !== 1) {
+                console.error(
+                        `[Email Worker] SMTP accepted notification ${notification.id}, but its database state changed before SENT could be recorded. Manual reconciliation required.`,
+                );
+                return;
+        }
+
+        console.log(
+                `[Email] Sent ${notification.eventType} notification ${notification.id}`,
+        );
 }

@@ -168,6 +168,8 @@ export const NotificationScalarFieldEnum = {
   status: 'status',
   errorMessage: 'errorMessage',
   sentAt: 'sentAt',
+  attemptStartedAt: 'attemptStartedAt',
+  providerMessageId: 'providerMessageId',
   createdAt: 'createdAt'
 } as const
 

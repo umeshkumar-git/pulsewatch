@@ -44,8 +44,10 @@ export type NotificationChannel = (typeof NotificationChannel)[keyof typeof Noti
 
 export const NotificationStatus = {
   PENDING: 'PENDING',
+  SENDING: 'SENDING',
   SENT: 'SENT',
-  FAILED: 'FAILED'
+  FAILED: 'FAILED',
+  DELIVERY_UNKNOWN: 'DELIVERY_UNKNOWN'
 } as const
 
 export type NotificationStatus = (typeof NotificationStatus)[keyof typeof NotificationStatus]
