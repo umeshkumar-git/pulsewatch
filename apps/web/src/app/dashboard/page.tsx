@@ -141,6 +141,7 @@ export default function DashboardPage() {
 	const [error, setError] = useState("");
 	const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 	const [refreshVersion, setRefreshVersion] = useState(0);
+const [page, setPage] = useState(1);
 
 	const loadDashboard = useCallback(
 		async (active: () => boolean) => {
@@ -148,7 +149,7 @@ export default function DashboardPage() {
 				setError("");
 
 				const result = await apiFetch<DashboardResponse>(
-					"/monitors/dashboard?page=1&limit=50",
+					`/monitors/dashboard?page=${page}&limit=50`,
 				);
 
 				if (!active()) return;
@@ -174,7 +175,7 @@ export default function DashboardPage() {
 				}
 			}
 		},
-		[router],
+		[router, page],
 	);
 
 	useEffect(() => {
@@ -516,6 +517,44 @@ export default function DashboardPage() {
 							</table>
 						</div>
 					)}
+{pagination.totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-800 px-5 py-4">
+                <p className="text-sm text-slate-400">
+                        Showing{" "}
+                        {(pagination.page - 1) * pagination.limit + 1}
+                        {"–"}
+                        {Math.min(
+                                pagination.page * pagination.limit,
+                                pagination.total,
+                        )}{" "}
+                        of {pagination.total} monitors
+                </p>
+
+                <div className="flex items-center gap-3">
+                        <button
+                                type="button"
+                                disabled={pagination.page <= 1}
+                                onClick={() => setPage(pagination.page - 1)}
+                                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+                        >
+                                Previous
+                        </button>
+
+                        <span className="text-sm text-slate-400">
+                                Page {pagination.page} of {pagination.totalPages}
+                        </span>
+
+                        <button
+                                type="button"
+                                disabled={pagination.page >= pagination.totalPages}
+                                onClick={() => setPage(pagination.page + 1)}
+                                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+                        >
+                                Next
+                        </button>
+                </div>
+        </div>
+)}
 				</section>
 
 				<section className="mt-8 overflow-hidden rounded-xl border border-slate-800 bg-slate-900">

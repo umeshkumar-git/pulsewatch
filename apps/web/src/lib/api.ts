@@ -7,10 +7,13 @@ export function setAccessToken(token: string | null) {
 	accessToken = token;
 }
 
+export type FieldErrors = Record<string, string[]>;
+
 export class ApiError extends Error {
 	constructor(
 		message: string,
 		public status: number,
+		public fieldErrors: FieldErrors = {},
 	) {
 		super(message);
 		this.name = "ApiError";
@@ -82,9 +85,25 @@ export async function apiFetch<T>(
 	const result = await response.json().catch(() => null);
 
 	if (!response.ok) {
+		const rawFieldErrors = result?.errors?.fieldErrors;
+
+		const fieldErrors: FieldErrors =
+			rawFieldErrors && typeof rawFieldErrors === "object"
+				? Object.fromEntries(
+						Object.entries(rawFieldErrors).filter(
+							(entry): entry is [string, string[]] =>
+								Array.isArray(entry[1]) &&
+								entry[1].every(
+									(message) => typeof message === "string",
+								),
+						),
+					)
+				: {};
+
 		throw new ApiError(
 			result?.message ?? "Something went wrong.",
 			response.status,
+			fieldErrors,
 		);
 	}
 

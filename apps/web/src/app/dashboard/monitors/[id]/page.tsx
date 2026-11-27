@@ -33,6 +33,16 @@ function MonitorDetailsContent() {
 	const [actionLoading, setActionLoading] = useState(false);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const [actionError, setActionError] = useState("");
+	const [fieldErrors, setFieldErrors] = useState<
+		Partial<Record<keyof typeof formData, string>>
+	>({});
+	function clearFieldError(field: keyof typeof formData) {
+		setFieldErrors((current) => ({
+			...current,
+			[field]: undefined,
+		}));
+		setActionError("");
+	}
 
 	const [formData, setFormData] = useState({
 		name: "",
@@ -133,44 +143,151 @@ function MonitorDetailsContent() {
 		});
 
 		setActionError("");
+		setFieldErrors({});
 		setEditing(true);
 	}
 
 	async function handleSave() {
-		setSaving(true);
+		if (saving) return;
+
 		setActionError("");
+		setFieldErrors({});
+
+		const validationErrors: Partial<Record<keyof typeof formData, string>> =
+			{};
+
+		const trimmedName = formData.name.trim();
+		const trimmedUrl = formData.url.trim();
+
+		if (trimmedName.length < 2 || trimmedName.length > 80) {
+			validationErrors.name =
+				"Name must contain between 2 and 80 characters.";
+		}
+
+		try {
+			const parsedUrl = new URL(trimmedUrl);
+
+			if (
+				parsedUrl.protocol !== "http:" &&
+				parsedUrl.protocol !== "https:"
+			) {
+				validationErrors.url =
+					"Only HTTP and HTTPS URLs are supported.";
+			}
+		} catch {
+			validationErrors.url = "Enter a valid URL.";
+		}
+
+		if (
+			!Number.isInteger(formData.intervalSeconds) ||
+			formData.intervalSeconds < 30 ||
+			formData.intervalSeconds > 86400
+		) {
+			validationErrors.intervalSeconds =
+				"Interval must be between 30 and 86,400 seconds.";
+		}
+
+		if (
+			!Number.isInteger(formData.timeoutMs) ||
+			formData.timeoutMs < 1000 ||
+			formData.timeoutMs > 30000
+		) {
+			validationErrors.timeoutMs =
+				"Timeout must be between 1,000 and 30,000 ms.";
+		}
+
+		if (
+			!Number.isInteger(formData.failureThreshold) ||
+			formData.failureThreshold < 1 ||
+			formData.failureThreshold > 10
+		) {
+			validationErrors.failureThreshold =
+				"Failure threshold must be between 1 and 10.";
+		}
+
+		if (
+			!Number.isInteger(formData.recoveryThreshold) ||
+			formData.recoveryThreshold < 1 ||
+			formData.recoveryThreshold > 10
+		) {
+			validationErrors.recoveryThreshold =
+				"Recovery threshold must be between 1 and 10.";
+		}
+
+		if (Object.keys(validationErrors).length > 0) {
+			setFieldErrors(validationErrors);
+			return;
+		}
+
+		setSaving(true);
 
 		try {
 			const result = await apiFetch<{ monitor: Monitor }>(
 				`/monitors/${id}`,
 				{
 					method: "PATCH",
-					body: JSON.stringify(formData),
+					body: JSON.stringify({
+						...formData,
+						name: trimmedName,
+						url: trimmedUrl,
+					}),
 				},
 			);
 
 			setMonitor((current) =>
 				current ? { ...current, ...result.monitor } : current,
 			);
+
 			setEditing(false);
+			setFieldErrors({});
 		} catch (err) {
 			if (err instanceof ApiError && err.status === 401) {
 				router.replace("/login");
 				return;
 			}
 
-			setActionError(
-				err instanceof Error
-					? err.message
-					: "Unable to update monitor.",
-			);
+			if (err instanceof ApiError) {
+				const backendErrors: Partial<
+					Record<keyof typeof formData, string>
+				> = {};
+
+				for (const field of [
+					"name",
+					"url",
+					"method",
+					"intervalSeconds",
+					"timeoutMs",
+					"failureThreshold",
+					"recoveryThreshold",
+				] as const) {
+					const message = err.fieldErrors[field]?.[0];
+
+					if (message) {
+						backendErrors[field] = message;
+					}
+				}
+
+				setFieldErrors(backendErrors);
+
+				if (Object.keys(backendErrors).length === 0) {
+					setActionError(err.message);
+				}
+			} else {
+				setActionError(
+					err instanceof Error
+						? err.message
+						: "Unable to update monitor.",
+				);
+			}
 		} finally {
 			setSaving(false);
 		}
 	}
 
 	async function handlePauseResume() {
-		if (!monitor) return;
+
+		if (!monitor || actionLoading) return;
+
 
 		setActionLoading(true);
 		setActionError("");
@@ -203,6 +320,7 @@ function MonitorDetailsContent() {
 	}
 
 	async function handleDelete() {
+		if (actionLoading) return;
 		setActionLoading(true);
 		setActionError("");
 
@@ -314,21 +432,31 @@ function MonitorDetailsContent() {
 							}}
 							className="grid gap-5 sm:grid-cols-2"
 						>
-							<label className="text-sm text-slate-300">
+							<label className="block text-sm font-medium text-slate-300">
 								Monitor name
 								<input
 									required
 									minLength={2}
 									maxLength={80}
 									value={formData.name}
-									onChange={(e) =>
+									onChange={(e) => {
 										setFormData({
 											...formData,
 											name: e.target.value,
-										})
-									}
+										});
+										clearFieldError("name");
+									}}
+									aria-invalid={Boolean(fieldErrors.name)}
 									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
 								/>
+								{fieldErrors.name && (
+									<p
+										className="mt-1 text-sm text-red-400"
+										role="alert"
+									>
+										{fieldErrors.name}
+									</p>
+								)}
 							</label>
 
 							<label className="text-sm text-slate-300">
@@ -337,32 +465,50 @@ function MonitorDetailsContent() {
 									required
 									type="url"
 									value={formData.url}
-									onChange={(e) =>
+									onChange={(e) => {
 										setFormData({
 											...formData,
 											url: e.target.value,
-										})
-									}
+										});
+										clearFieldError("url");
+									}}
 									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
 								/>
+								{fieldErrors.url && (
+									<p
+										className="mt-1 text-sm text-red-400"
+										role="alert"
+									>
+										{fieldErrors.url}
+									</p>
+								)}
 							</label>
 
 							<label className="text-sm text-slate-300">
 								HTTP method
 								<select
 									value={formData.method}
-									onChange={(e) =>
+									onChange={(e) => {
 										setFormData({
 											...formData,
 											method: e.target.value as
 												"GET" | "HEAD",
-										})
-									}
+										});
+										clearFieldError("method");
+									}}
 									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
 								>
 									<option value="GET">GET</option>
 									<option value="HEAD">HEAD</option>
 								</select>
+								{fieldErrors.method && (
+									<p
+										className="mt-1 text-sm text-red-400"
+										role="alert"
+									>
+										{fieldErrors.method}
+									</p>
+								)}
 							</label>
 
 							<label className="text-sm text-slate-300">
@@ -373,16 +519,25 @@ function MonitorDetailsContent() {
 									min={30}
 									max={86400}
 									value={formData.intervalSeconds}
-									onChange={(e) =>
+									onChange={(e) => {
 										setFormData({
 											...formData,
 											intervalSeconds: Number(
 												e.target.value,
 											),
-										})
-									}
+										});
+										clearFieldError("intervalSeconds");
+									}}
 									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
 								/>
+								{fieldErrors.intervalSeconds && (
+									<p
+										className="mt-1 text-sm text-red-400"
+										role="alert"
+									>
+										{fieldErrors.intervalSeconds}
+									</p>
+								)}
 							</label>
 
 							<label className="text-sm text-slate-300">
@@ -393,14 +548,23 @@ function MonitorDetailsContent() {
 									min={1000}
 									max={30000}
 									value={formData.timeoutMs}
-									onChange={(e) =>
+									onChange={(e) => {
 										setFormData({
 											...formData,
 											timeoutMs: Number(e.target.value),
-										})
-									}
+										});
+										clearFieldError("timeoutMs");
+									}}
 									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
 								/>
+								{fieldErrors.timeoutMs && (
+									<p
+										className="mt-1 text-sm text-red-400"
+										role="alert"
+									>
+										{fieldErrors.timeoutMs}
+									</p>
+								)}
 							</label>
 
 							<label className="text-sm text-slate-300">
@@ -411,16 +575,25 @@ function MonitorDetailsContent() {
 									min={1}
 									max={10}
 									value={formData.failureThreshold}
-									onChange={(e) =>
+									onChange={(e) => {
 										setFormData({
 											...formData,
 											failureThreshold: Number(
 												e.target.value,
 											),
-										})
-									}
+										});
+										clearFieldError("failureThreshold");
+									}}
 									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
 								/>
+								{fieldErrors.failureThreshold && (
+									<p
+										className="mt-1 text-sm text-red-400"
+										role="alert"
+									>
+										{fieldErrors.failureThreshold}
+									</p>
+								)}
 							</label>
 
 							<label className="text-sm text-slate-300">
@@ -431,16 +604,25 @@ function MonitorDetailsContent() {
 									min={1}
 									max={10}
 									value={formData.recoveryThreshold}
-									onChange={(e) =>
+									onChange={(e) => {
 										setFormData({
 											...formData,
 											recoveryThreshold: Number(
 												e.target.value,
 											),
-										})
-									}
+										});
+										clearFieldError("recoveryThreshold");
+									}}
 									className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
 								/>
+								{fieldErrors.recoveryThreshold && (
+									<p
+										className="mt-1 text-sm text-red-400"
+										role="alert"
+									>
+										{fieldErrors.recoveryThreshold}
+									</p>
+								)}
 							</label>
 
 							<div className="flex flex-wrap gap-3 sm:col-span-2">

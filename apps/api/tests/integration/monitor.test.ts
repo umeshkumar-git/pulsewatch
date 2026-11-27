@@ -28,6 +28,17 @@ async function createTestUser() {
 		accessToken: response.body.data.accessToken as string,
 	};
 }
+afterEach(async () => {
+        if (createdUserIds.length > 0) {
+                await prisma.user.deleteMany({
+                        where: {
+                                id: { in: [...createdUserIds] },
+                        },
+                });
+
+                createdUserIds.length = 0;
+        }
+});
 
 describe("Monitor API integration tests", () => {
 	it("rejects monitor requests without authentication", async () => {
@@ -296,6 +307,62 @@ describe("Monitor API integration tests", () => {
 		expect(response.status).toBe(404);
 		expect(response.body.success).toBe(false);
 	});
+
+        it("prevents another user from updating, pausing, resuming, or deleting a monitor", async () => {
+                const userOne = await createTestUser();
+                const userTwo = await createTestUser();
+
+                const created = await userOne.agent
+                        .post("/api/v1/monitors")
+                        .set("Authorization", `Bearer ${userOne.accessToken}`)
+                        .send({
+                                name: "Owner Private Monitor",
+                                url: "https://example.com",
+                        });
+
+                expect(created.status).toBe(201);
+
+                const monitorId = created.body.data.monitor.id;
+
+                const headers = {
+                        Authorization: `Bearer ${userTwo.accessToken}`,
+                };
+
+                const updated = await userTwo.agent
+                        .patch(`/api/v1/monitors/${monitorId}`)
+                        .set(headers)
+                        .send({ name: "Unauthorized Update" });
+
+                expect(updated.status).toBe(404);
+
+                const paused = await userTwo.agent
+                        .post(`/api/v1/monitors/${monitorId}/pause`)
+                        .set(headers);
+
+                expect(paused.status).toBe(404);
+
+                const resumed = await userTwo.agent
+                        .post(`/api/v1/monitors/${monitorId}/resume`)
+                        .set(headers);
+
+                expect(resumed.status).toBe(404);
+
+                const deleted = await userTwo.agent
+                        .delete(`/api/v1/monitors/${monitorId}`)
+                        .set(headers);
+
+                expect(deleted.status).toBe(404);
+
+                const ownerCheck = await userOne.agent
+                        .get(`/api/v1/monitors/${monitorId}`)
+                        .set("Authorization", `Bearer ${userOne.accessToken}`);
+
+                expect(ownerCheck.status).toBe(200);
+                expect(ownerCheck.body.data.monitor.name).toBe(
+                        "Owner Private Monitor",
+                );
+                expect(ownerCheck.body.data.monitor.enabled).toBe(true);
+        });
 
 	it("rejects dashboard requests without authentication", async () => {
 		const response = await request(app).get("/api/v1/monitors/dashboard");
