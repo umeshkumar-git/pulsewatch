@@ -29,15 +29,15 @@ async function createTestUser() {
 	};
 }
 afterEach(async () => {
-        if (createdUserIds.length > 0) {
-                await prisma.user.deleteMany({
-                        where: {
-                                id: { in: [...createdUserIds] },
-                        },
-                });
+	if (createdUserIds.length > 0) {
+		await prisma.user.deleteMany({
+			where: {
+				id: { in: [...createdUserIds] },
+			},
+		});
 
-                createdUserIds.length = 0;
-        }
+		createdUserIds.length = 0;
+	}
 });
 
 describe("Monitor API integration tests", () => {
@@ -143,17 +143,26 @@ describe("Monitor API integration tests", () => {
 		expect(created.status).toBe(201);
 
 		const monitorId = created.body.data.monitor.id;
-		const checkedAt = new Date();
+
+
+		const now = new Date();
+
+		const checkData = [
+			{ success: true, latencyMs: 10, minutesAgo: 5 },
+			{ success: true, latencyMs: 20, minutesAgo: 4 },
+			{ success: true, latencyMs: 30, minutesAgo: 3 },
+			{ success: true, latencyMs: 40, minutesAgo: 2 },
+			{ success: true, latencyMs: 50, minutesAgo: 1 },
+			{ success: false, latencyMs: 999, minutesAgo: 0 },
+		];
 
 		await prisma.checkResult.createMany({
-			data: [
-				{ monitorId, success: true, latencyMs: 10, checkedAt },
-				{ monitorId, success: true, latencyMs: 20, checkedAt },
-				{ monitorId, success: true, latencyMs: 30, checkedAt },
-				{ monitorId, success: true, latencyMs: 40, checkedAt },
-				{ monitorId, success: true, latencyMs: 50, checkedAt },
-				{ monitorId, success: false, latencyMs: 999, checkedAt },
-			],
+			data: checkData.map(({ success, latencyMs, minutesAgo }) => ({
+				monitorId,
+				success,
+				latencyMs,
+				checkedAt: new Date(now.getTime() - minutesAgo * 60_000),
+			})),
 		});
 
 		const response = await agent
@@ -163,6 +172,32 @@ describe("Monitor API integration tests", () => {
 		expect(response.status).toBe(200);
 
 		const data = response.body.data;
+		expect(data.checks).toHaveLength(5);
+
+		expect(
+			data.checks.map((check: { latencyMs: number }) => check.latencyMs),
+		).toEqual([10, 20, 30, 40, 50]);
+
+		expect(
+			data.checks.every(
+				(check: {
+					id: string;
+					latencyMs: number;
+					success: boolean;
+					checkedAt: string;
+				}) =>
+					Boolean(check.id) &&
+					check.success === true &&
+					typeof check.latencyMs === "number" &&
+					Boolean(check.checkedAt),
+			),
+		).toBe(true);
+
+		const timestamps = data.checks.map((check: { checkedAt: string }) =>
+			new Date(check.checkedAt).getTime(),
+		);
+
+		expect(timestamps).toEqual([...timestamps].sort((a, b) => a - b));
 
 		expect(data.totalChecks).toBe(6);
 		expect(data.successfulChecks).toBe(5);
@@ -308,61 +343,59 @@ describe("Monitor API integration tests", () => {
 		expect(response.body.success).toBe(false);
 	});
 
-        it("prevents another user from updating, pausing, resuming, or deleting a monitor", async () => {
-                const userOne = await createTestUser();
-                const userTwo = await createTestUser();
+	it("prevents another user from updating, pausing, resuming, or deleting a monitor", async () => {
+		const userOne = await createTestUser();
+		const userTwo = await createTestUser();
 
-                const created = await userOne.agent
-                        .post("/api/v1/monitors")
-                        .set("Authorization", `Bearer ${userOne.accessToken}`)
-                        .send({
-                                name: "Owner Private Monitor",
-                                url: "https://example.com",
-                        });
+		const created = await userOne.agent
+			.post("/api/v1/monitors")
+			.set("Authorization", `Bearer ${userOne.accessToken}`)
+			.send({
+				name: "Owner Private Monitor",
+				url: "https://example.com",
+			});
 
-                expect(created.status).toBe(201);
+		expect(created.status).toBe(201);
 
-                const monitorId = created.body.data.monitor.id;
+		const monitorId = created.body.data.monitor.id;
 
-                const headers = {
-                        Authorization: `Bearer ${userTwo.accessToken}`,
-                };
+		const headers = {
+			Authorization: `Bearer ${userTwo.accessToken}`,
+		};
 
-                const updated = await userTwo.agent
-                        .patch(`/api/v1/monitors/${monitorId}`)
-                        .set(headers)
-                        .send({ name: "Unauthorized Update" });
+		const updated = await userTwo.agent
+			.patch(`/api/v1/monitors/${monitorId}`)
+			.set(headers)
+			.send({ name: "Unauthorized Update" });
 
-                expect(updated.status).toBe(404);
+		expect(updated.status).toBe(404);
 
-                const paused = await userTwo.agent
-                        .post(`/api/v1/monitors/${monitorId}/pause`)
-                        .set(headers);
+		const paused = await userTwo.agent
+			.post(`/api/v1/monitors/${monitorId}/pause`)
+			.set(headers);
 
-                expect(paused.status).toBe(404);
+		expect(paused.status).toBe(404);
 
-                const resumed = await userTwo.agent
-                        .post(`/api/v1/monitors/${monitorId}/resume`)
-                        .set(headers);
+		const resumed = await userTwo.agent
+			.post(`/api/v1/monitors/${monitorId}/resume`)
+			.set(headers);
 
-                expect(resumed.status).toBe(404);
+		expect(resumed.status).toBe(404);
 
-                const deleted = await userTwo.agent
-                        .delete(`/api/v1/monitors/${monitorId}`)
-                        .set(headers);
+		const deleted = await userTwo.agent
+			.delete(`/api/v1/monitors/${monitorId}`)
+			.set(headers);
 
-                expect(deleted.status).toBe(404);
+		expect(deleted.status).toBe(404);
 
-                const ownerCheck = await userOne.agent
-                        .get(`/api/v1/monitors/${monitorId}`)
-                        .set("Authorization", `Bearer ${userOne.accessToken}`);
+		const ownerCheck = await userOne.agent
+			.get(`/api/v1/monitors/${monitorId}`)
+			.set("Authorization", `Bearer ${userOne.accessToken}`);
 
-                expect(ownerCheck.status).toBe(200);
-                expect(ownerCheck.body.data.monitor.name).toBe(
-                        "Owner Private Monitor",
-                );
-                expect(ownerCheck.body.data.monitor.enabled).toBe(true);
-        });
+		expect(ownerCheck.status).toBe(200);
+		expect(ownerCheck.body.data.monitor.name).toBe("Owner Private Monitor");
+		expect(ownerCheck.body.data.monitor.enabled).toBe(true);
+	});
 
 	it("rejects dashboard requests without authentication", async () => {
 		const response = await request(app).get("/api/v1/monitors/dashboard");

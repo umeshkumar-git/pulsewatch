@@ -335,10 +335,13 @@ export async function getMonitorUptime(
 			prisma.checkResult.findMany({
 				where: latencyWhere,
 				select: {
+					id: true,
 					latencyMs: true,
+					success: true,
+					checkedAt: true,
 				},
 				orderBy: {
-					latencyMs: "asc",
+					checkedAt: "asc",
 				},
 			}),
 		]);
@@ -368,6 +371,7 @@ export async function getMonitorUptime(
 			maxMs: latencyAggregate._max?.latencyMs ?? null,
 			sampleCount: latencyAggregate._count.latencyMs,
 		},
+		checks: latencyResults,
 		calculatedAt,
 	};
 }

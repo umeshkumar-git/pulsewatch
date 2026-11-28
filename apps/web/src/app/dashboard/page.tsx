@@ -9,6 +9,7 @@ import type {
 	DashboardMonitor,
 	DashboardCheck,
 	Incident,
+	UptimeData,
 } from "@/lib/types";
 import ResponseTimeChart from "@/components/response-time-chart";
 import CheckHistory from "@/components/check-history";
@@ -141,7 +142,23 @@ export default function DashboardPage() {
 	const [error, setError] = useState("");
 	const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 	const [refreshVersion, setRefreshVersion] = useState(0);
-const [page, setPage] = useState(1);
+	const [page, setPage] = useState(1);
+	const [selectedMonitorId, setSelectedMonitorId] = useState("");
+	const [analyticsPeriod, setAnalyticsPeriod] = useState(24);
+	const [analytics, setAnalytics] = useState<UptimeData | null>(null);
+	const [analyticsError, setAnalyticsError] = useState("");
+
+	const activeMonitorId = data?.monitors.some(
+		(monitor) => monitor.id === selectedMonitorId,
+	)
+		? selectedMonitorId
+		: (data?.monitors[0]?.id ?? "");
+
+	const analyticsLoading =
+		Boolean(activeMonitorId) &&
+		!analyticsError &&
+		(analytics?.monitor.id !== activeMonitorId ||
+			analytics?.periodHours !== analyticsPeriod);
 
 	const loadDashboard = useCallback(
 		async (active: () => boolean) => {
@@ -207,6 +224,43 @@ const [page, setPage] = useState(1);
 			window.clearInterval(intervalId);
 		};
 	}, [loadDashboard, refreshVersion]);
+
+	useEffect(() => {
+		if (!activeMonitorId) return;
+
+		let active = true;
+
+		async function loadAnalytics() {
+			try {
+				const result = await apiFetch<UptimeData>(
+					`/monitors/${activeMonitorId}/uptime?hours=${analyticsPeriod}`,
+				);
+
+				if (active) {
+					setAnalytics(result);
+				}
+			} catch (err) {
+				if (!active) return;
+
+				if (err instanceof ApiError && err.status === 401) {
+					router.replace("/login");
+					return;
+				}
+
+				setAnalyticsError(
+					err instanceof Error
+						? err.message
+						: "Unable to load response-time analytics.",
+				);
+			}
+		}
+
+		void loadAnalytics();
+
+		return () => {
+			active = false;
+		};
+	}, [activeMonitorId, analyticsPeriod, router]);
 
 	if (loading && !data) {
 		return <DashboardSkeleton />;
@@ -401,15 +455,140 @@ const [page, setPage] = useState(1);
 
 				<section className="mt-8 grid gap-6 lg:grid-cols-2">
 					<div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-5">
-						<div className="mb-5">
-							<h2 className="text-lg font-semibold">
-								Response time
-							</h2>
-							<p className="mt-1 text-sm text-slate-400">
-								Recent successful monitor checks.
-							</p>
+						<div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+							<div>
+								<h2 className="text-lg font-semibold">
+									Response time analytics
+								</h2>
+								<p className="mt-1 text-sm text-slate-400">
+									Historical response-time performance.
+								</p>
+							</div>
+
+							<select
+								aria-label="Select monitor"
+								value={activeMonitorId}
+								onChange={(event) => {
+									setSelectedMonitorId(event.target.value);
+									setAnalyticsError("");
+								}}
+								disabled={monitors.length === 0}
+								className="max-w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+							>
+								{monitors.map((monitor) => (
+									<option key={monitor.id} value={monitor.id}>
+										{monitor.name}
+									</option>
+								))}
+							</select>
 						</div>
-						<ResponseTimeChart checks={recentChecks} />
+
+						<div className="mb-5 flex flex-wrap gap-2">
+							{[
+								{ label: "1 hour", hours: 1 },
+								{ label: "24 hours", hours: 24 },
+								{ label: "7 days", hours: 168 },
+								{ label: "30 days", hours: 720 },
+							].map((period) => (
+								<button
+									key={period.hours}
+									type="button"
+									onClick={() => {
+										setAnalyticsPeriod(period.hours);
+										setAnalyticsError("");
+									}}
+									className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+										analyticsPeriod === period.hours
+											? "bg-cyan-500 text-slate-950"
+											: "border border-slate-700 text-slate-400 hover:bg-slate-800"
+									}`}
+								>
+									{period.label}
+								</button>
+							))}
+						</div>
+
+						{analyticsError && (
+							<div
+								role="alert"
+								className="mb-4 rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
+							>
+								{analyticsError}
+								<button
+									type="button"
+									onClick={() => {
+										setAnalyticsError("");
+										setRefreshVersion(
+											(version) => version + 1,
+										);
+									}}
+									className="ml-2 font-semibold underline"
+								>
+									Retry
+								</button>
+							</div>
+						)}
+
+						{!activeMonitorId ? (
+							<div className="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+								<p className="text-sm text-slate-400">
+									Add a monitor to view response-time
+									analytics.
+								</p>
+							</div>
+						) : (
+							<>
+								<div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+									{[
+										{
+											label: "Average",
+											value: analytics?.latency.averageMs,
+										},
+										{
+											label: "Minimum",
+											value: analytics?.latency.minMs,
+										},
+										{
+											label: "Maximum",
+											value: analytics?.latency.maxMs,
+										},
+										{
+											label: "P50",
+											value: analytics?.latency.p50Ms,
+										},
+										{
+											label: "P95",
+											value: analytics?.latency.p95Ms,
+										},
+										{
+											label: "P99",
+											value: analytics?.latency.p99Ms,
+										},
+									].map((stat) => (
+										<div
+											key={stat.label}
+											className="rounded-lg border border-slate-800 bg-slate-950/60 p-3"
+										>
+											<p className="text-xs text-slate-500">
+												{stat.label}
+											</p>
+											<p className="mt-1 text-lg font-semibold tabular-nums">
+												{analyticsLoading
+													? "—"
+													: formatLatency(
+															stat.value ?? null,
+														)}
+											</p>
+										</div>
+									))}
+								</div>
+
+								<ResponseTimeChart
+									checks={analytics?.checks ?? []}
+									loading={analyticsLoading}
+								/>
+							</>
+						)}
 					</div>
 
 					<div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -517,44 +696,47 @@ const [page, setPage] = useState(1);
 							</table>
 						</div>
 					)}
-{pagination.totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-800 px-5 py-4">
-                <p className="text-sm text-slate-400">
-                        Showing{" "}
-                        {(pagination.page - 1) * pagination.limit + 1}
-                        {"–"}
-                        {Math.min(
-                                pagination.page * pagination.limit,
-                                pagination.total,
-                        )}{" "}
-                        of {pagination.total} monitors
-                </p>
+					{pagination.totalPages > 1 && (
+						<div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-800 px-5 py-4">
+							<p className="text-sm text-slate-400">
+								Showing{" "}
+								{(pagination.page - 1) * pagination.limit + 1}
+								{"–"}
+								{Math.min(
+									pagination.page * pagination.limit,
+									pagination.total,
+								)}{" "}
+								of {pagination.total} monitors
+							</p>
 
-                <div className="flex items-center gap-3">
-                        <button
-                                type="button"
-                                disabled={pagination.page <= 1}
-                                onClick={() => setPage(pagination.page - 1)}
-                                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-40"
-                        >
-                                Previous
-                        </button>
+							<div className="flex items-center gap-3">
+								<button
+									type="button"
+									disabled={pagination.page <= 1}
+									onClick={() => setPage(pagination.page - 1)}
+									className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+								>
+									Previous
+								</button>
 
-                        <span className="text-sm text-slate-400">
-                                Page {pagination.page} of {pagination.totalPages}
-                        </span>
+								<span className="text-sm text-slate-400">
+									Page {pagination.page} of{" "}
+									{pagination.totalPages}
+								</span>
 
-                        <button
-                                type="button"
-                                disabled={pagination.page >= pagination.totalPages}
-                                onClick={() => setPage(pagination.page + 1)}
-                                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-40"
-                        >
-                                Next
-                        </button>
-                </div>
-        </div>
-)}
+								<button
+									type="button"
+									disabled={
+										pagination.page >= pagination.totalPages
+									}
+									onClick={() => setPage(pagination.page + 1)}
+									className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+								>
+									Next
+								</button>
+							</div>
+						</div>
+					)}
 				</section>
 
 				<section className="mt-8 overflow-hidden rounded-xl border border-slate-800 bg-slate-900">

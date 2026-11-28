@@ -60,6 +60,7 @@ export interface UptimeData {
 	failedChecks: number;
 	uptimePercentage: number | null;
 	latency: LatencyStatistics;
+	checks: CheckResult[];
 	calculatedAt: string;
 }
 export interface PublicStatusMonitor {

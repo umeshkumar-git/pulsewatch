@@ -19,9 +19,10 @@ interface Check {
 
 interface Props {
 	checks: Check[];
+	loading?: boolean;
 }
 
-export default function ResponseTimeChart({ checks }: Props) {
+export default function ResponseTimeChart({ checks, loading = false }: Props) {
 	const data = [...checks]
 		.filter(
 			(check) =>
@@ -29,42 +30,72 @@ export default function ResponseTimeChart({ checks }: Props) {
 				check.latencyMs !== null &&
 				Number.isFinite(check.latencyMs),
 		)
-		.reverse()
+		.sort(
+			(a, b) =>
+				new Date(a.checkedAt).getTime() -
+				new Date(b.checkedAt).getTime(),
+		)
 		.map((check) => ({
-			time: new Date(check.checkedAt).toLocaleTimeString([], {
+			id: check.id,
+			timestamp: new Date(check.checkedAt).getTime(),
+			time: new Date(check.checkedAt).toLocaleString([], {
+				month: "short",
+				day: "numeric",
 				hour: "2-digit",
 				minute: "2-digit",
 			}),
 			latency: check.latencyMs,
 		}));
 
+	if (loading) {
+		return (
+			<div className="flex h-72 items-center justify-center text-sm text-slate-400">
+				Loading response-time data...
+			</div>
+		);
+	}
+
 	if (data.length === 0) {
 		return (
-			<div className="flex h-64 items-center justify-center text-sm text-slate-400">
-				No successful response-time data available yet.
+			<div className="flex h-72 items-center justify-center text-center text-sm text-slate-400">
+				No successful response-time data available for this period.
 			</div>
 		);
 	}
 
 	return (
-		<div className="h-72 w-full">
+		<div className="h-72 min-w-0 w-full">
 			<ResponsiveContainer width="100%" height="100%">
 				<LineChart
 					data={data}
-					margin={{ top: 10, right: 20, left: 0, bottom: 5 }}
+					margin={{ top: 10, right: 20, left: 5, bottom: 5 }}
 				>
 					<CartesianGrid stroke="#263449" strokeDasharray="3 3" />
 					<XAxis
-						dataKey="time"
+						dataKey="timestamp"
+						type="number"
+						scale="time"
+						domain={["dataMin", "dataMax"]}
+						tickFormatter={(value) =>
+							new Date(value).toLocaleDateString([], {
+								month: "short",
+								day: "numeric",
+							})
+						}
 						stroke="#94a3b8"
-						tick={{ fontSize: 12 }}
+						tick={{ fontSize: 11 }}
+						minTickGap={30}
 					/>
 					<YAxis
 						stroke="#94a3b8"
-						tick={{ fontSize: 12 }}
+						tick={{ fontSize: 11 }}
 						unit=" ms"
+						width={65}
 					/>
 					<Tooltip
+						labelFormatter={(value) =>
+							new Date(Number(value)).toLocaleString()
+						}
 						contentStyle={{
 							backgroundColor: "#0f172a",
 							border: "1px solid #334155",
@@ -78,8 +109,9 @@ export default function ResponseTimeChart({ checks }: Props) {
 						dataKey="latency"
 						stroke="#06b6d4"
 						strokeWidth={2}
-						dot={{ r: 3, fill: "#06b6d4" }}
-						activeDot={{ r: 6 }}
+						dot={false}
+						activeDot={{ r: 5 }}
+						connectNulls={false}
 					/>
 				</LineChart>
 			</ResponsiveContainer>

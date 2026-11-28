@@ -26,6 +26,7 @@ function MonitorDetailsContent() {
 	const [periodHours, setPeriodHours] = useState(24);
 	const [uptimeLoading, setUptimeLoading] = useState(false);
 	const [error, setError] = useState("");
+	const [uptimeError, setUptimeError] = useState("");
 	const [loading, setLoading] = useState(true);
 
 	const [editing, setEditing] = useState(false);
@@ -96,6 +97,8 @@ function MonitorDetailsContent() {
 
 		async function loadUptime() {
 			setUptimeLoading(true);
+			setUptimeError("");
+			setUptime(null);
 
 			try {
 				const uptimeData = await apiFetch<UptimeData>(
@@ -113,7 +116,7 @@ function MonitorDetailsContent() {
 					return;
 				}
 
-				setError(
+				setUptimeError(
 					err instanceof Error
 						? err.message
 						: "Unable to load uptime analytics.",
@@ -285,9 +288,7 @@ function MonitorDetailsContent() {
 	}
 
 	async function handlePauseResume() {
-
 		if (!monitor || actionLoading) return;
-
 
 		setActionLoading(true);
 		setActionError("");
@@ -816,8 +817,16 @@ function MonitorDetailsContent() {
 							Recent successful checks, measured in milliseconds.
 						</p>
 					</div>
+					{uptimeError && (
+						<p className="mb-4 rounded-lg border border-red-800 bg-red-950/30 p-3 text-sm text-red-300">
+							{uptimeError}
+						</p>
+					)}
 
-					<ResponseTimeChart checks={monitor.checkResults} />
+					<ResponseTimeChart
+						checks={uptime?.checks ?? []}
+						loading={uptimeLoading}
+					/>
 				</section>
 				<section className="mt-8 rounded-xl border border-slate-800 bg-slate-900 p-5">
 					<h2 className="mb-5 text-lg font-semibold">
